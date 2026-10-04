@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block main %}
+{% if not settings_ok %}<div class="banner">Bitte zuerst unter <a href="{{ url_for('settings') }}">Einstellungen</a> deine Absenderdaten (Name, Adresse, Steuernummer, IBAN) eintragen – sie werden für die Endkundenrechnung benötigt.</div>{% endif %}
+<h1>Lieferantenrechnung hochladen</h1>
+<form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" id="f">
+<label class="drop" id="drop" style="display:block;cursor:pointer"><div style="font-size:16px"><b>PDF hierher ziehen</b> oder klicken zum Auswählen</div>
+<div class="mute">Die Positionen, Preise, Preiseinheiten und die Lieferadresse werden automatisch eingelesen.</div>
+<input type="file" name="file" accept="application/pdf" id="file" style="display:none"></label></form>
+<script>
+const f=document.getElementById('file'),d=document.getElementById('drop');
+f.onchange=()=>f.files.length&&document.getElementById('f').submit();
+['dragover','dragenter'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.add('over')}));
+['dragleave','drop'].forEach(e=>d.addEventListener(e,()=>d.classList.remove('over')));
+d.addEventListener('drop',ev=>{ev.preventDefault();f.files=ev.dataTransfer.files;f.onchange()});
+</script>
+<h1 style="margin-top:28px">Bisherige Rechnungen</h1>
+<div class="card" style="padding:0"><table>
+<tr><th>Nr.</th><th>Kunde</th><th>Status</th><th class="right">Netto</th><th class="right">Brutto</th><th>Geändert</th><th></th></tr>
+{% for i in invoices %}<tr><td>{{ i.number }}</td><td>{{ i.customer_name }}</td>
+<td><span class="pill {{ i.status }}">{{ 'fertig' if i.status=='final' else 'Entwurf' }}</span></td>
+<td class="right">{{ i.net|money }}</td><td class="right">{{ i.gross|money }}</td><td class="mute">{{ i.updated[:16].replace('T',' ') }}</td>
+<td class="right"><a href="{{ url_for('invoice', iid=i.id) }}">öffnen</a>{% if i.out_pdf %} · <a href="{{ url_for('download', iid=i.id) }}">PDF</a>{% endif %}</td></tr>
+{% else %}<tr><td colspan="7" class="mute" style="padding:18px">Noch keine Rechnungen.</td></tr>{% endfor %}</table></div>
+{% endblock %}

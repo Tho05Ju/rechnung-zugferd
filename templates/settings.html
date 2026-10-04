@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block main %}
+<h1>Einstellungen</h1>
+<form method="post" enctype="multipart/form-data"><div class="card"><h2>Rechnungssteller (du)</h2><div class="grid g3">
+<div><label>Name / Firma *</label><input name="name" value="{{ s.name }}"></div>
+<div><label>Straße + Nr. *</label><input name="street" value="{{ s.street }}"></div>
+<div class="grid" style="grid-template-columns:90px 1fr;gap:8px"><div><label>PLZ *</label><input name="zip" value="{{ s.zip }}"></div><div><label>Ort *</label><input name="city" value="{{ s.city }}"></div></div>
+<div><label>Land (2 Buchstaben)</label><input name="country" value="{{ s.country }}"></div>
+<div><label>E-Mail</label><input name="email" value="{{ s.email }}"></div>
+<div><label>Telefon</label><input name="phone" value="{{ s.phone }}"></div>
+<div><label>Steuernummer (Finanzamt) *</label><input name="tax_number" value="{{ s.tax_number }}"></div>
+<div><label>USt-IdNr. (falls vorhanden)</label><input name="vat_id" value="{{ s.vat_id }}"></div><div></div>
+<div><label>IBAN *</label><input name="iban" value="{{ s.iban }}"></div>
+<div><label>BIC</label><input name="bic" value="{{ s.bic }}"></div>
+<div><label>Bank</label><input name="bank_name" value="{{ s.bank_name }}"></div></div>
+<div class="hint">* Pflicht für die Rechnungserzeugung. Steuernummer <i>oder</i> USt-IdNr. genügt.</div></div>
+<div class="card"><h2>Firmenlogo</h2>{% if logo_error %}<div class="banner err">{{ logo_error }}</div>{% endif %}
+<div style="display:flex;gap:20px;align-items:center">{% if logo %}<img src="{{ url_for('logo') }}?{{ range(1,10**9)|random }}" alt="Logo" style="max-height:70px;max-width:220px;background:#fff;border:1px solid var(--line);padding:6px;border-radius:6px">{% endif %}
+<div><input type="file" name="logo" accept="image/png,image/jpeg">{% if logo %}<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--ink)"><input type="checkbox" name="remove_logo" value="1" style="width:auto">Logo entfernen</label>{% endif %}</div></div>
+<div class="hint">PNG oder JPG, erscheint oben links auf der Rechnung. Transparente Hintergründe werden weiß hinterlegt.</div></div>
+<div class="card"><h2>Voreinstellungen</h2><div class="grid g4">
+<div><label>Umsatzsteuer %</label><input name="vat_rate" value="{{ s.vat_rate }}"></div>
+<div><label>Zahlungsziel (Tage)</label><input name="payment_days" value="{{ s.payment_days }}"></div>
+<div><label>Standard-Aufschlag %</label><input name="default_markup" value="{{ s.default_markup }}"></div>
+<div style="padding-top:20px"><label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink)"><input type="checkbox" name="kleinunternehmer" value="1" style="width:auto" {{ 'checked' if s.kleinunternehmer=='1' }}>Kleinunternehmer (§ 19 UStG, keine USt)</label></div>
+<div><label>Rechnungsnummern-Format</label><input name="number_format" value="{{ s.number_format }}"></div>
+<div><label>Nächste Nummer (Zähler)</label><input name="next_number" value="{{ s.next_number }}"></div></div>
+<div class="hint">Format-Platzhalter: {year} und {n:04d} (laufende Nummer, 4-stellig). Beispiel: RE-{year}-{n:04d} → RE-2026-0001.</div></div>
+<button class="primary">Speichern</button></form>
+{% endblock %}

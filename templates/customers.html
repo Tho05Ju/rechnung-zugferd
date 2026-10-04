@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block main %}
+<h1>Kunden</h1>
+<p class="mute">Kunden werden automatisch angelegt, wenn du in einer Rechnung die Lieferadresse speicherst. Hier kannst du sie nachbearbeiten.</p>
+{% macro form(c) %}<form method="post" action="{{ url_for('customer_save') }}" class="grid" style="grid-template-columns:1.4fr 1.2fr 1.2fr 70px 1fr 50px 1.2fr auto;align-items:end">
+<input type="hidden" name="id" value="{{ c.id if c else '' }}">
+<div><label>Name</label><input name="name" value="{{ c.name if c else '' }}" required></div>
+<div><label>Zusatz / Firma</label><input name="name2" value="{{ c.name2 or '' if c else '' }}"></div>
+<div><label>Straße</label><input name="street" value="{{ c.street or '' if c else '' }}"></div>
+<div><label>PLZ</label><input name="zip" value="{{ c.zip or '' if c else '' }}"></div>
+<div><label>Ort</label><input name="city" value="{{ c.city or '' if c else '' }}"></div>
+<div><label>Land</label><input name="country" value="{{ c.country or 'DE' if c else 'DE' }}"></div>
+<div><label>E-Mail</label><input name="email" value="{{ c.email or '' if c else '' }}"></div>
+<input type="hidden" name="vat_id" value="{{ c.vat_id or '' if c else '' }}">
+<div style="display:flex;gap:6px"><button class="primary">{{ 'Speichern' if c else 'Anlegen' }}</button></div></form>{% endmacro %}
+<div class="card"><h2>Neuer Kunde</h2>{{ form(None) }}</div>
+{% for c in customers %}<div class="card" style="padding:12px 18px"><div class="mute" style="font-size:12px;margin-bottom:4px">Kunden-Nr. {{ c.id }}</div>{{ form(c) }}
+<form method="post" action="{{ url_for('customer_delete', cid=c.id) }}" onsubmit="return confirm('Kunde löschen? Bestehende Rechnungen bleiben unverändert.')" style="margin-top:6px"><button class="link err">löschen</button></form></div>
+{% else %}<p class="mute">Noch keine Kunden.</p>{% endfor %}
+{% endblock %}

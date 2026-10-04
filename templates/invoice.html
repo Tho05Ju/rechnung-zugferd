@@ -1,0 +1,53 @@
+{% extends "base.html" %}{% block title %}Rechnung {{ data.meta.number }}{% endblock %}{% block main %}
+<h1>Endkundenrechnung <span class="pill {{ inv.status }}">{{ 'fertig' if inv.status=='final' else 'Entwurf' }}</span></h1>
+<div class="mute" style="margin:-8px 0 16px">Aus Lieferantenrechnung {{ data.supplier.name or '' }} Nr. {{ data.supplier.invoice_no or '?' }} vom {{ data.supplier.date or '?' }} ·
+<a href="{{ url_for('source', iid=inv.id) }}" target="_blank">Original ansehen</a>
+{% for x in data.extras %}<br>+ {{ x.name or 'Weitere Rechnung' }} Nr. {{ x.invoice_no or '?' }} vom {{ x.date or '?' }} ({{ x.count }} Pos.) · <a href="{{ url_for('source', iid=inv.id, n=loop.index) }}" target="_blank">Original ansehen</a>{% endfor %}
+{% if inv.status != 'final' %}<br><form method="post" action="{{ url_for('add_source', iid=inv.id) }}" enctype="multipart/form-data" id="add-form" style="display:inline">
+<input type="file" name="file" accept="application/pdf" id="add-file" style="display:none">
+<button type="button" id="add-src">+ Weitere Lieferantenrechnung anhängen</button></form>{% endif %}</div>
+{% for w in data.warnings %}<div class="banner">⚠ {{ w }}</div>{% endfor %}
+<div id="errors"></div>
+
+<div class="grid g2">
+<div class="card"><h2>Kunde (Lieferadresse)</h2>
+<label>Kunde aus Datenbank</label>
+<select id="cust-select"><option value="">– neu / Lieferadresse der Rechnung –</option></select>
+<div class="grid" style="margin-top:12px">
+<div class="grid g2"><div><label>Name *</label><input data-c="name"></div><div><label>Zusatz / Firma</label><input data-c="name2"></div></div>
+<div><label>Straße + Nr. *</label><input data-c="street"></div>
+<div class="grid" style="grid-template-columns:100px 1fr 70px"><div><label>PLZ *</label><input data-c="zip"></div><div><label>Ort *</label><input data-c="city"></div><div><label>Land</label><input data-c="country"></div></div>
+<div class="grid g2"><div><label>E-Mail</label><input data-c="email"></div><div><label>USt-IdNr. (falls Firma)</label><input data-c="vat_id"></div></div></div>
+<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;color:var(--ink)"><input type="checkbox" id="save-customer" style="width:auto" checked>In Kundendatenbank speichern</label>
+<label id="as-new-wrap" style="display:none;gap:8px;align-items:center;margin-top:6px;font-size:13px;color:var(--ink)"><input type="checkbox" id="as-new" style="width:auto">Als neuen Kunden anlegen (bestehenden nicht überschreiben)</label>
+<div class="hint" id="cust-hint"></div></div>
+
+<div class="card"><h2>Rechnungsdaten</h2><div class="grid g2">
+<div><label>Rechnungsnummer *</label><input data-m="number"></div>
+<div><label>Rechnungsdatum *</label><input type="date" data-m="date"></div>
+<div><label>Lieferdatum *</label><input type="date" data-m="delivery_date"></div>
+<div><label>Zahlungsziel</label><input value="{{ settings.payment_days }} Tage" disabled></div></div>
+<div style="margin-top:12px"><label>Hinweistext (optional, erscheint auf der Rechnung)</label><textarea data-m="note" rows="2"></textarea></div>
+<div style="margin-top:12px;display:flex;gap:12px;align-items:end"><div style="width:180px"><label><b>Aufschlag gesamt (%)</b></label><input id="global-markup" class="num" style="font-weight:700"></div>
+<div class="hint" style="margin:0 0 8px">Gilt für alle Positionen, in denen kein eigener Aufschlag eingetragen ist. Ein Wert in der Position überschreibt ihn (auch 0).</div></div></div>
+</div>
+
+<div class="card items" style="padding:12px 12px 6px"><h2 style="padding:0 6px">Positionen</h2>
+<table><thead><tr><th style="width:28px">#</th><th>Artikel / Bezeichnung</th><th style="width:78px">Menge</th><th style="width:58px">ME</th><th style="width:96px">EK-Preis</th>
+<th style="width:108px">Preis je</th><th style="width:82px">Aufschlag %</th><th class="right" style="width:120px">VK-Einzelpreis</th><th class="right" style="width:104px">VK-Summe</th><th style="width:30px"></th></tr></thead>
+<tbody id="rows"></tbody></table>
+<div style="padding:8px 6px"><button id="add" type="button">+ Position</button></div>
+<div class="totals" id="totals"></div></div>
+
+<div class="bar"><span class="mute" id="status"></span>
+<button type="button" id="save">Speichern</button><button type="button" class="primary" id="make">Vorschau &amp; erzeugen</button></div>
+
+<div id="pv" class="modal" hidden><div class="modal-box">
+<div class="modal-head"><b>Vorschau – bitte prüfen</b><span class="mute" id="pv-name"></span></div>
+<iframe id="pv-frame" title="Rechnungsvorschau"></iframe>
+<div class="modal-foot"><span class="mute" id="pv-hint">Die Rechnung ist noch nicht gespeichert. Erst mit „Speichern unter …“ wird sie fertiggestellt und die Rechnungsnummer vergeben.</span>
+<button type="button" id="pv-back">Zurück zur Bearbeitung</button><button type="button" class="primary" id="pv-save">Speichern unter …</button></div></div></div>
+
+<script id="init" type="application/json">{{ {'data': data, 'customers': customers, 'vat_rate': vat_rate, 'iid': inv.id, 'next': settings.next_number}|tojson }}</script>
+<script src="{{ url_for('static', filename='invoice.js') }}"></script>
+{% endblock %}

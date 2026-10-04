@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Rechnung{% endblock %}</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script></head>
+<body><header class="top"><b>Rechnungstool</b>
+<a href="{{ url_for('index') }}" class="{{ 'on' if request.endpoint in ('index','invoice') }}">Rechnungen</a>
+<a href="{{ url_for('customers') }}" class="{{ 'on' if request.endpoint=='customers' }}">Kunden</a>
+<a href="{{ url_for('settings') }}" class="{{ 'on' if request.endpoint=='settings' }}">Einstellungen</a>
+<button type="button" id="theme" title="Zwischen hellem und dunklem Design wechseln"></button></header>
+<main>{% block main %}{% endblock %}</main>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('theme'),m=matchMedia('(prefers-color-scheme:dark)');
+function dark(){return r.dataset.theme?r.dataset.theme==='dark':m.matches}
+function show(){b.textContent=dark()?'☀ Hell':'🌙 Dunkel'}
+b.onclick=function(){var t=dark()?'light':'dark';r.dataset.theme=t;try{localStorage.setItem('theme',t)}catch(e){}show()};
+m.addEventListener('change',show);show()})();
+</script></body></html>

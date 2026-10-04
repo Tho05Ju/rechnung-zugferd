@@ -1,0 +1,21 @@
+Rechnung - Installation unter Windows
+=====================================
+
+1. ZIP-Datei in einen beliebigen Ordner entpacken (z. B. C:\Rechnung).
+   Nicht aus dem ZIP heraus starten, sondern erst entpacken.
+2. Doppelklick auf  install.bat
+   - Richtet Python und alle Pakete automatisch ein (Internet noetig, ca. 5 Minuten).
+   - Legt eine Verknuepfung "Rechnung" auf dem Desktop an.
+3. Starten: Verknuepfung "Rechnung" oder Doppelklick auf start.bat.
+   Die App oeffnet sich im Browser unter http://127.0.0.1:5001
+   Das schwarze Fenster muss waehrend der Arbeit offen bleiben; zum Beenden schliessen.
+4. Beim ersten Start unter "Einstellungen" Absenderdaten, Steuernummer und IBAN eintragen.
+
+Daten
+-----
+Alles liegt im Programmordner:
+  data\rechnung.db   Einstellungen, Kunden, Rechnungen
+  data\uploads\      hochgeladene Lieferantenrechnungen
+  Rechnungen\        fertige ZUGFeRD-PDFs
+Fuer eine Datensicherung oder einen Umzug auf einen anderen PC diese Ordner kopieren.
+Zum Aktualisieren der Programmdateien die Ordner data und Rechnungen behalten.
