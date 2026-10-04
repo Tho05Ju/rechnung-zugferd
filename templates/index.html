@@ -18,6 +18,7 @@ d.addEventListener('drop',ev=>{ev.preventDefault();f.files=ev.dataTransfer.files
 {% for i in invoices %}<tr><td>{{ i.number }}</td><td>{{ i.customer_name }}</td>
 <td><span class="pill {{ i.status }}">{{ 'fertig' if i.status=='final' else 'Entwurf' }}</span></td>
 <td class="right">{{ i.net|money }}</td><td class="right">{{ i.gross|money }}</td><td class="mute">{{ i.updated[:16].replace('T',' ') }}</td>
-<td class="right"><a href="{{ url_for('invoice', iid=i.id) }}">öffnen</a>{% if i.out_pdf %} · <a href="{{ url_for('download', iid=i.id) }}">PDF</a>{% endif %}</td></tr>
+<td class="right"><a href="{{ url_for('invoice', iid=i.id) }}">öffnen</a>{% if i.out_pdf %} · <a href="{{ url_for('download', iid=i.id) }}">PDF</a>{% endif %}
+{% if i.status == 'draft' %} · <form method="post" action="{{ url_for('delete_invoice', iid=i.id) }}" style="display:inline" onsubmit="return confirm('Entwurf {{ (i.number or '')|e }} wirklich löschen? Das kann nicht rückgängig gemacht werden.')"><button type="submit" class="link err">löschen</button></form>{% endif %}</td></tr>
 {% else %}<tr><td colspan="7" class="mute" style="padding:18px">Noch keine Rechnungen.</td></tr>{% endfor %}</table></div>
 {% endblock %}

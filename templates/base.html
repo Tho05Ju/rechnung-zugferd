@@ -5,6 +5,7 @@
 <body><header class="top"><b>Rechnungstool</b>
 <a href="{{ url_for('index') }}" class="{{ 'on' if request.endpoint in ('index','invoice') }}">Rechnungen</a>
 <a href="{{ url_for('customers') }}" class="{{ 'on' if request.endpoint=='customers' }}">Kunden</a>
+<a href="{{ url_for('export_page') }}" class="{{ 'on' if request.endpoint in ('export_page','export_datev') }}">DATEV-Export</a>
 <a href="{{ url_for('settings') }}" class="{{ 'on' if request.endpoint=='settings' }}">Einstellungen</a>
 <button type="button" id="theme" title="Zwischen hellem und dunklem Design wechseln"></button></header>
 <main>{% block main %}{% endblock %}</main>

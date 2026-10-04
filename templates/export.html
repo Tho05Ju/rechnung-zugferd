@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block title %}DATEV-Export{% endblock %}{% block main %}
+<h1>DATEV-Export</h1>
+<p class="mute">Exportiert die <b>fertigen</b> Ausgangsrechnungen eines Zeitraums als Buchungsstapel (CSV, EXTF-Format) zum Import in DATEV.
+Entwürfe werden nicht exportiert.</p>
+{% if problems %}<div class="banner err"><b>Export noch nicht möglich:</b><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+<div style="margin-top:6px">Die DATEV-Angaben pflegst du unter <a href="{{ url_for('settings') }}">Einstellungen</a>, Debitorennummern unter <a href="{{ url_for('customers') }}">Kunden</a>.</div></div>{% endif %}
+<form method="get" class="card" style="display:flex;gap:16px;align-items:end;flex-wrap:wrap">
+<div><label>Von (Rechnungsdatum)</label><input type="date" name="von" value="{{ von }}"></div>
+<div><label>Bis (Rechnungsdatum)</label><input type="date" name="bis" value="{{ bis }}"></div>
+<button type="submit">Anzeigen</button>
+<a class="btn primary" href="{{ url_for('export_datev', von=von, bis=bis) }}" style="margin-left:auto">DATEV-Datei (CSV) herunterladen</a></form>
+<div class="card" style="padding:0"><table>
+<tr><th>Nr.</th><th>Datum</th><th>Kunde</th><th>Art</th><th class="right">Netto</th><th class="right">Brutto</th></tr>
+{% for i in invoices %}<tr><td>{{ i.number }}</td><td>{{ i.date.strftime('%d.%m.%Y') }}</td><td>{{ i.data.customer.name }}</td>
+<td>{{ '§ 13b (ohne USt)' if i.data.meta.tax_mode == '13b' else 'mit USt' }}</td><td class="right">{{ i.net|money }}</td><td class="right">{{ i.gross|money }}</td></tr>
+{% else %}<tr><td colspan="6" class="mute" style="padding:18px">Keine fertigen Rechnungen in diesem Zeitraum.</td></tr>{% endfor %}</table></div>
+<p class="hint">Gebucht wird je Rechnung: Debitor (Soll) an Erlöskonto (Haben). Konten, Steuerschlüssel und Formatangaben bitte einmal vom Steuerberater bestätigen lassen, ein Probeimport mit einer Rechnung ist empfehlenswert.</p>
+{% endblock %}

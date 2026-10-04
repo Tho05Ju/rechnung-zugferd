@@ -25,5 +25,21 @@
 <div><label>Rechnungsnummern-Format</label><input name="number_format" value="{{ s.number_format }}"></div>
 <div><label>Nächste Nummer (Zähler)</label><input name="next_number" value="{{ s.next_number }}"></div></div>
 <div class="hint">Format-Platzhalter: {year} und {n:04d} (laufende Nummer, 4-stellig). Beispiel: RE-{year}-{n:04d} → RE-2026-0001.</div></div>
+<div class="card"><h2>Bauleistungen (§ 13b UStG)</h2><div class="grid g3">
+<div style="grid-column:1/-1"><label>Hinweistext auf der Rechnung</label><input name="reverse_note" value="{{ s.reverse_note }}"></div>
+<div><label>Freistellungsbescheinigung (§ 48b EStG), Nr.</label><input name="freistellung_nr" value="{{ s.freistellung_nr }}"></div>
+<div><label>gültig bis</label><input name="freistellung_bis" value="{{ s.freistellung_bis }}" placeholder="TT.MM.JJJJ"></div></div>
+<div class="hint">Der Hinweistext erscheint nur auf Rechnungen mit § 13b. Ist eine Nummer eingetragen, steht zusätzlich ein Hinweis auf deine Freistellungsbescheinigung auf der Rechnung. Wortlaut und Pflichtangaben bitte einmal mit dem Steuerberater abstimmen.</div></div>
+<div class="card"><h2>DATEV-Export</h2><div class="grid g4">
+<div><label>Beraternummer</label><input name="datev_berater" value="{{ s.datev_berater }}" inputmode="numeric"></div>
+<div><label>Mandantennummer</label><input name="datev_mandant" value="{{ s.datev_mandant }}" inputmode="numeric"></div>
+<div><label>Beginn Wirtschaftsjahr (TT.MM.)</label><input name="datev_wj_beginn" value="{{ s.datev_wj_beginn }}"></div>
+<div><label>Sachkontenlänge</label><input name="datev_sachkontenlaenge" value="{{ s.datev_sachkontenlaenge }}" inputmode="numeric"></div>
+<div><label>Erlöskonto mit USt (19 %)</label><input name="datev_erloes_konto" value="{{ s.datev_erloes_konto }}" inputmode="numeric"></div>
+<div><label>BU-Schlüssel dazu (meist leer)</label><input name="datev_bu_19" value="{{ s.datev_bu_19 }}" inputmode="numeric"></div>
+<div><label>Erlöskonto § 13b</label><input name="datev_erloes_konto_13b" value="{{ s.datev_erloes_konto_13b }}" inputmode="numeric"></div>
+<div><label>BU-Schlüssel § 13b</label><input name="datev_bu_13b" value="{{ s.datev_bu_13b }}" inputmode="numeric"></div></div>
+<div class="hint">Alle Werte vom Steuerberater bestätigen lassen. Vorbelegt ist nur 8400 (Erlöse 19 % im Kontenrahmen SKR03; SKR04: 4400). Das Konto für § 13b ist bewusst leer – es unterscheidet sich je nach Kontenrahmen und Steuerberater.
+Rechnungen mit § 13b lassen sich erst exportieren, wenn es eingetragen ist.</div></div>
 <button class="primary">Speichern</button></form>
 {% endblock %}

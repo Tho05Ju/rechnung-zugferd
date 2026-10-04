@@ -11,6 +11,17 @@ Rechnung - Installation unter Windows
    Das schwarze Fenster muss waehrend der Arbeit offen bleiben; zum Beenden schliessen.
 4. Beim ersten Start unter "Einstellungen" Absenderdaten, Steuernummer und IBAN eintragen.
 
+Funktionen
+----------
+- Lieferantenrechnung hochladen: ZUGFeRD-/XRechnung-PDFs werden ueber das eingebettete XML gelesen (jeder Lieferant),
+  normale PDFs nur im Layout der EFG. Weitere Lieferantenrechnungen lassen sich im Entwurf anhaengen.
+- Vorschau vor dem Erzeugen; Speicherort frei waehlbar (Chrome/Edge).
+- Entwuerfe loeschen (fertige Rechnungen bleiben erhalten).
+- Bauleistungen: Schalter "§ 13b UStG" je Rechnung (Voreinstellung am Kunden). Der Kunde braucht eine USt-IdNr.
+  Hinweistext und Freistellungsbescheinigung unter Einstellungen. Bitte mit dem Steuerberater abstimmen.
+- DATEV-Export (Menue "DATEV-Export"): Buchungsstapel-CSV der fertigen Rechnungen. Vorher unter Einstellungen
+  Berater-/Mandantennummer und Konten eintragen und vom Steuerberater bestaetigen lassen.
+
 Daten
 -----
 Alles liegt im Programmordner:

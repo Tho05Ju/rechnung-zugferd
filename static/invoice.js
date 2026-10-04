@@ -9,6 +9,9 @@ const num = v => { let s = String(v ?? '').trim().replace(/\s|€|%/g, ''); if (
 const r2 = x => Math.round(x * 100 + (x >= 0 ? 1e-7 : -1e-7)) / 100;
 const eur = x => r2(x).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const own = it => String(it.markup ?? '').trim() !== '';
+// § 13b UStG: Rechnung netto, Steuerschuldner ist der Leistungsempfänger (nicht bei Kleinunternehmern, dort gibt es den Schalter nicht)
+const is13b = () => S.meta.tax_mode === '13b' && !!document.getElementById('t13b');
+const rate = () => is13b() ? 0 : RATE;
 
 // ---- Kunde
 const cust = S.customer;
@@ -32,19 +35,30 @@ sel.onchange = () => {
   const src = c || S.delivery_address;
   ['name', 'name2', 'street', 'zip', 'city', 'country', 'email', 'vat_id'].forEach(k => cust[k] = src[k] || (k === 'country' ? 'DE' : ''));
   cust.id = c ? c.id : null; pristine = { ...cust }; fillCustomer();
+  if (c && $('#t13b')) { S.meta.tax_mode = c.bau13b ? '13b' : 'standard'; sync13b(); recalc(); }  // Voreinstellung des Kunden
 };
 $$('[data-c]').forEach(i => i.oninput = () => { cust[i.dataset.c] = i.value; hint(); });
 $$('[data-m]').forEach(i => { i.value = S.meta[i.dataset.m] ?? ''; i.oninput = () => S.meta[i.dataset.m] = i.value; });
+function sync13b() {
+  const t = $('#t13b'); if (!t) return;
+  t.checked = S.meta.tax_mode === '13b'; $('#t13b-hint').style.display = t.checked ? 'block' : 'none';
+}
+if ($('#t13b')) { sync13b(); $('#t13b').onchange = e => { S.meta.tax_mode = e.target.checked ? '13b' : 'standard'; sync13b(); recalc(); }; }
 fillCustomer();
 
 // ---- Positionen
 const gm = $('#global-markup'); gm.value = S.global_markup; gm.oninput = () => { S.global_markup = gm.value; recalc(); };
+// Ungewöhnliche Preiseinheit des Lieferanten (z. B. je 50) sichtbar halten, statt sie stillschweigend auf je 1 zu setzen
+function unitsFor(it) {
+  const u = num(it.price_unit);
+  return u > 0 && !PRICE_UNITS.includes(u) ? [...PRICE_UNITS, u].sort((a, b) => a - b) : PRICE_UNITS;
+}
 function rowHtml(i) {
   return `<tr data-i="${i}"><td class="mute" style="padding-top:12px">${i + 1}</td>
   <td><input data-f="article" placeholder="Art.-Nr." style="margin-bottom:4px;font-size:12px"><textarea data-f="description" rows="2" placeholder="Bezeichnung"></textarea></td>
   <td><input data-f="qty" class="num" inputmode="decimal"></td><td><input data-f="unit"></td>
   <td><input data-f="price" class="num" inputmode="decimal"></td>
-  <td><select data-f="price_unit">${PRICE_UNITS.map(u => `<option value="${u}">je ${u.toLocaleString('de-DE')}</option>`).join('')}</select></td>
+  <td><select data-f="price_unit">${unitsFor(S.items[i]).map(u => `<option value="${u}">je ${u.toLocaleString('de-DE')}</option>`).join('')}</select></td>
   <td><input data-f="markup" class="num" inputmode="decimal"></td>
   <td class="c" data-o="unit"></td><td class="c" data-o="total"></td>
   <td><button type="button" class="link err" title="Position entfernen" data-del>✕</button></td></tr>`;
@@ -71,7 +85,7 @@ function calc() {
     net += total; cost += r2(num(it.qty) * num(it.price) / basis);
     return { unit, total, basis };
   });
-  net = r2(net); const tax = r2(net * RATE / 100);
+  net = r2(net); const tax = r2(net * rate() / 100);
   return { lines, net, cost: r2(cost), tax, gross: net + tax };
 }
 function recalc() {
@@ -87,7 +101,7 @@ function recalc() {
   $('#totals').innerHTML = `<div class="mute"><span>Einkauf netto</span><span>${eur(c.cost)} €</span></div>
    <div class="mute"><span>Aufschlag gesamt</span><span>${eur(c.net - c.cost)} €</span></div>
    <div><span>Summe netto</span><span>${eur(c.net)} €</span></div>
-   <div><span>${RATE ? 'zzgl. USt ' + RATE.toLocaleString('de-DE') + ' %' : 'USt (Kleinunternehmer)'}</span><span>${eur(c.tax)} €</span></div>
+   <div><span>${is13b() ? 'USt: Steuerschuldner ist der Kunde (§ 13b)' : RATE ? 'zzgl. USt ' + RATE.toLocaleString('de-DE') + ' %' : 'USt (Kleinunternehmer)'}</span><span>${eur(c.tax)} €</span></div>
    <div class="grand"><span>Gesamtbetrag</span><span>${eur(c.gross)} €</span></div>`;
 }
 $('#add').onclick = () => { S.items.push({ article: '', description: '', qty: '1', unit: 'ST', price: '0', price_unit: '1', markup: '' }); renderRows(); };
@@ -96,7 +110,7 @@ renderRows();
 // ---- Speichern / Erzeugen
 function payload() {
   return { meta: S.meta, customer: cust, items: S.items, global_markup: S.global_markup,
-    save_customer: $('#save-customer').checked, as_new: $('#as-new').checked };
+    save_customer: $('#save-customer').checked, as_new: $('#as-new').checked, remember_13b: !!($('#r13b') && $('#r13b').checked) };
 }
 async function post(path, btn) {
   btn.disabled = true; $('#errors').innerHTML = '';

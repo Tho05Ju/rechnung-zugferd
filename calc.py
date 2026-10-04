@@ -28,8 +28,9 @@ def has_value(v):
     return str(v if v is not None else "").strip() != ""
 
 
-def compute(items, global_markup, vat_rate, small_business=False):
-    """Liefert (lines, totals). Positions-Aufschlag überschreibt den globalen Aufschlag."""
+def compute(items, global_markup, vat_rate, small_business=False, reverse_charge=False):
+    """Liefert (lines, totals). Positions-Aufschlag überschreibt den globalen Aufschlag.
+    reverse_charge: §13b UStG – Rechnung netto ohne Umsatzsteuer (Steuerschuldner ist der Leistungsempfänger)."""
     g = D(global_markup)
     lines = []
     for it in items:
@@ -51,7 +52,7 @@ def compute(items, global_markup, vat_rate, small_business=False):
         })
     net = sum((l["total"] for l in lines), Decimal(0))
     cost = sum((l["cost"] for l in lines), Decimal(0))
-    rate = Decimal(0) if small_business else D(vat_rate, "19")
+    rate = Decimal(0) if (small_business or reverse_charge) else D(vat_rate, "19")
     tax = q2(net * rate / 100)
     totals = {"net": net, "cost": cost, "markup_amount": net - cost, "rate": rate, "tax": tax, "gross": net + tax}
     return lines, totals

@@ -28,6 +28,10 @@
 <div><label>Lieferdatum *</label><input type="date" data-m="delivery_date"></div>
 <div><label>Zahlungsziel</label><input value="{{ settings.payment_days }} Tage" disabled></div></div>
 <div style="margin-top:12px"><label>Hinweistext (optional, erscheint auf der Rechnung)</label><textarea data-m="note" rows="2"></textarea></div>
+{% if settings.kleinunternehmer != '1' %}<div style="margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+<label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);margin:0"><input type="checkbox" id="t13b" style="width:auto"><b>§ 13b UStG</b> – Bauleistung, Steuerschuldner ist der Kunde (Rechnung netto, ohne USt)</label>
+<label style="display:flex;gap:8px;align-items:center;font-size:12px;margin:6px 0 0 24px"><input type="checkbox" id="r13b" style="width:auto">Für diesen Kunden künftig vorbelegen</label>
+<div class="hint" id="t13b-hint" style="display:none">Der Kunde braucht eine USt-IdNr. Die Rechnung wird ohne Umsatzsteuer erstellt und enthält den Hinweis auf die Steuerschuldnerschaft.</div></div>{% endif %}
 <div style="margin-top:12px;display:flex;gap:12px;align-items:end"><div style="width:180px"><label><b>Aufschlag gesamt (%)</b></label><input id="global-markup" class="num" style="font-weight:700"></div>
 <div class="hint" style="margin:0 0 8px">Gilt für alle Positionen, in denen kein eigener Aufschlag eingetragen ist. Ein Wert in der Position überschreibt ihn (auch 0).</div></div></div>
 </div>
@@ -39,7 +43,8 @@
 <div style="padding:8px 6px"><button id="add" type="button">+ Position</button></div>
 <div class="totals" id="totals"></div></div>
 
-<div class="bar"><span class="mute" id="status"></span>
+<div class="bar"><span class="mute" id="status" style="margin-right:auto"></span>
+{% if inv.status == 'draft' %}<form method="post" action="{{ url_for('delete_invoice', iid=inv.id) }}" onsubmit="return confirm('Diesen Entwurf wirklich löschen? Das kann nicht rückgängig gemacht werden.')"><button type="submit" class="err">Entwurf löschen</button></form>{% endif %}
 <button type="button" id="save">Speichern</button><button type="button" class="primary" id="make">Vorschau &amp; erzeugen</button></div>
 
 <div id="pv" class="modal" hidden><div class="modal-box">
