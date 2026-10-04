@@ -5,3 +5,6 @@ data/
 Rechnungen/
 *.pdf
 .DS_Store
+build/
+dist/
+*.spec
