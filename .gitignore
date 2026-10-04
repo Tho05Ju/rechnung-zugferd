@@ -1,0 +1,7 @@
+﻿.venv/
+__pycache__/
+# Nutzerdaten (Kunden, Rechnungen, Logo, Uploads) und Lieferanten-PDFs nicht veröffentlichen
+data/
+Rechnungen/
+*.pdf
+.DS_Store
