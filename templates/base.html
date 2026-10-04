@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Rechnung{% endblock %}</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><header class="top"><b>Rechnungstool</b>
+<a href="{{ url_for('index') }}" class="{{ 'on' if request.endpoint in ('index','invoice') }}">Rechnungen</a>
+<a href="{{ url_for('customers') }}" class="{{ 'on' if request.endpoint=='customers' }}">Kunden</a>
+<a href="{{ url_for('settings') }}" class="{{ 'on' if request.endpoint=='settings' }}">Einstellungen</a></header>
+<main>{% block main %}{% endblock %}</main></body></html>
