@@ -12,13 +12,19 @@ f.onchange=()=>f.files.length&&document.getElementById('f').submit();
 ['dragleave','drop'].forEach(e=>d.addEventListener(e,()=>d.classList.remove('over')));
 d.addEventListener('drop',ev=>{ev.preventDefault();f.files=ev.dataTransfer.files;f.onchange()});
 </script>
+<h1 style="margin-top:28px">Neue Rechnung ohne Lieferantenrechnung</h1>
+<form method="post" action="{{ url_for('new_invoice') }}" class="card" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+<div style="min-width:280px;flex:1"><label>Kunde (optional, kann im Entwurf noch gewählt oder angelegt werden)</label>
+<select name="customer_id"><option value="">– Kunde später wählen –</option>{% for c in customers %}<option value="{{ c.id }}">{{ c.name }}{% if c.name2 %} – {{ c.name2 }}{% endif %}, {{ c.zip }} {{ c.city }}</option>{% endfor %}</select></div>
+<button class="primary" type="submit">Leere Rechnung erstellen</button>
+<div class="hint" style="flex-basis:100%;margin:0">Für eigene Leistungen oder Rechnungen ohne Einkaufsbeleg, z. B. Baudienstleistungen mit § 13b. Die Positionen trägst du von Hand ein.</div></form>
 <h1 style="margin-top:28px">Bisherige Rechnungen</h1>
 <div class="card" style="padding:0"><table>
-<tr><th>Nr.</th><th>Kunde</th><th>Status</th><th class="right">Netto</th><th class="right">Brutto</th><th>Geändert</th><th></th></tr>
+<tr><th>Nr.</th><th>Kunde</th><th>Status</th><th class="right">Einkauf netto</th><th class="right">Netto</th><th class="right">Brutto</th><th>Geändert</th><th></th></tr>
 {% for i in invoices %}<tr><td>{{ i.number }}</td><td>{{ i.customer_name }}</td>
 <td><span class="pill {{ i.status }}">{{ 'fertig' if i.status=='final' else 'Entwurf' }}</span></td>
-<td class="right">{{ i.net|money }}</td><td class="right">{{ i.gross|money }}</td><td class="mute">{{ i.updated[:16].replace('T',' ') }}</td>
+<td class="right mute">{{ i.cost|money if i.cost is not none else '–' }}</td><td class="right">{{ i.net|money }}</td><td class="right">{{ i.gross|money }}</td><td class="mute">{{ i.updated[:16].replace('T',' ') }}</td>
 <td class="right"><a href="{{ url_for('invoice', iid=i.id) }}">öffnen</a>{% if i.out_pdf %} · <a href="{{ url_for('download', iid=i.id) }}">PDF</a>{% endif %}
 {% if i.status == 'draft' %} · <form method="post" action="{{ url_for('delete_invoice', iid=i.id) }}" style="display:inline" onsubmit="return confirm('Entwurf {{ (i.number or '')|e }} wirklich löschen? Das kann nicht rückgängig gemacht werden.')"><button type="submit" class="link err">löschen</button></form>{% endif %}</td></tr>
-{% else %}<tr><td colspan="7" class="mute" style="padding:18px">Noch keine Rechnungen.</td></tr>{% endfor %}</table></div>
+{% else %}<tr><td colspan="8" class="mute" style="padding:18px">Noch keine Rechnungen.</td></tr>{% endfor %}</table></div>
 {% endblock %}

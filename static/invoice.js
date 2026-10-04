@@ -98,8 +98,8 @@ function recalc() {
     tr.classList.toggle('mm', !!it.mismatch);
     tr.title = it.mismatch ? 'Menge × Preis passt nicht zum Positionswert der Lieferantenrechnung – Preiseinheit prüfen' : '';
   });
-  $('#totals').innerHTML = `<div class="mute"><span>Einkauf netto</span><span>${eur(c.cost)} €</span></div>
-   <div class="mute"><span>Aufschlag gesamt</span><span>${eur(c.net - c.cost)} €</span></div>
+  $('#totals').innerHTML = (S.own ? '' : `<div class="mute"><span>Einkauf netto</span><span>${eur(c.cost)} €</span></div>
+   <div class="mute"><span>Aufschlag gesamt</span><span>${eur(c.net - c.cost)} €</span></div>`) + `
    <div><span>Summe netto</span><span>${eur(c.net)} €</span></div>
    <div><span>${is13b() ? 'USt: Steuerschuldner ist der Kunde (§ 13b)' : RATE ? 'zzgl. USt ' + RATE.toLocaleString('de-DE') + ' %' : 'USt (Kleinunternehmer)'}</span><span>${eur(c.tax)} €</span></div>
    <div class="grand"><span>Gesamtbetrag</span><span>${eur(c.gross)} €</span></div>`;

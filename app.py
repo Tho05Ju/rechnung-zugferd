@@ -118,8 +118,20 @@ def next_number(s):
 # ------------------------------------------------------------------ Seiten
 @app.get("/")
 def index():
-    rows = db().execute("SELECT * FROM invoices ORDER BY id DESC LIMIT 100").fetchall()
-    return render_template("index.html", invoices=rows, settings_ok=bool(get_settings()["name"]))
+    s = get_settings()
+    rows = []
+    for r in db().execute("SELECT * FROM invoices ORDER BY id DESC LIMIT 100"):
+        row = dict(r)
+        d = json.loads(r["data"])
+        # Einkauf aus den gespeicherten Positionen (stimmt damit auch für ältere Rechnungen); eigene Rechnungen haben keinen Einkauf
+        lines, totals = compute(d["items"], d.get("global_markup", "0"), s["vat_rate"], s["kleinunternehmer"] == "1",
+                                d["meta"].get("tax_mode") == "13b")
+        row["cost"] = None if d.get("own") else totals["cost"]
+        if not row["net"]:  # frisch hochgeladener Entwurf: noch nie gespeichert
+            row["net"], row["gross"] = totals["net"], totals["gross"]
+        rows.append(row)
+    customers = db().execute("SELECT id, name, name2, zip, city FROM customers ORDER BY name").fetchall()
+    return render_template("index.html", invoices=rows, customers=customers, settings_ok=bool(s["name"]))
 
 
 def prepare_items(items):
@@ -168,6 +180,31 @@ def upload():
     return redirect(url_for("invoice", iid=cur.lastrowid))
 
 
+@app.post("/invoice/new")
+def new_invoice():
+    """Leere Rechnung ohne Lieferantenrechnung (z. B. eigene Leistungen), optional für einen vorhandenen Kunden."""
+    s = get_settings()
+    row = db().execute("SELECT * FROM customers WHERE id=?", (request.form.get("customer_id") or 0,)).fetchone()
+    cust = {k: (row[k] or "") if row else "" for k in CUSTOMER_FIELDS}
+    cust["country"] = cust["country"] or "DE"
+    cust["id"] = row["id"] if row else None
+    today = dt.date.today().isoformat()
+    data = {
+        "supplier": {}, "warnings": [], "own": True,
+        "delivery_address": {k: "" for k in CUSTOMER_FIELDS},
+        "meta": {"number": next_number(s), "date": today, "delivery_date": today, "note": "",
+                 "tax_mode": "13b" if row and row["bau13b"] and s["kleinunternehmer"] != "1" else "standard"},
+        "customer": cust, "global_markup": "0",  # eigene Preise: kein Einkaufspreis, daher kein Aufschlag
+        "items": [{"article": "", "description": "", "qty": "1", "unit": "ST", "price": "0", "price_unit": "1",
+                   "markup": "", "supplier_value": "", "mismatch": False}],
+    }
+    cur = db().execute(
+        "INSERT INTO invoices (status, number, data, source_pdf, customer_name, created, updated) VALUES ('draft',?,?,?,?,?,?)",
+        (data["meta"]["number"], json.dumps(data, ensure_ascii=False), None, cust["name"], now(), now()))
+    db().commit()
+    return redirect(url_for("invoice", iid=cur.lastrowid))
+
+
 def load_invoice(iid):
     row = db().execute("SELECT * FROM invoices WHERE id=?", (iid,)).fetchone()
     if not row:
@@ -192,6 +229,8 @@ def source(iid, n=0):
     if n and n > len(extras):
         abort(404)
     name = extras[n - 1]["file"] if n else row["source_pdf"]
+    if not name:  # eigene Rechnung ohne Lieferantenrechnung
+        abort(404)
     return send_file(UPLOADS / name, mimetype="application/pdf")
 
 
@@ -207,7 +246,8 @@ def add_source(iid):
     parsed = read_supplier_invoice(str(path))
     new_items = prepare_items(parsed["items"])
     sup = parsed["supplier"]
-    data["items"] = data["items"] + new_items
+    blank = lambda it: not (it["description"].strip() or it["article"].strip()) and D(it["price"]) == 0
+    data["items"] = [it for it in data["items"] if not blank(it)] + new_items  # leere Platzhalter-Zeile einer eigenen Rechnung entfällt
     data.setdefault("extras", []).append({"file": path.name, "name": sup.get("name", ""), "invoice_no": sup.get("invoice_no", ""),
                                           "date": sup.get("date", ""), "count": len(new_items)})
     data["warnings"] = data.get("warnings", []) + [f"{sup.get('name') or 'Weitere Rechnung'} Nr. {sup.get('invoice_no') or '?'}: {w}" for w in parsed["warnings"]]
