@@ -1,0 +1,35 @@
+Rechnung - Installation auf dem Mac
+===================================
+
+1. ZIP-Datei in einen beliebigen Ordner entpacken (z. B. Dokumente/Rechnung).
+   Nicht aus dem ZIP heraus starten, sondern erst entpacken.
+2. Beim ersten Mal: Rechtsklick auf  install.command  ->  "Oeffnen"  ->  "Oeffnen" bestaetigen
+   (macOS warnt bei Dateien aus dem Internet; das ist normal).
+   Alternativ im Terminal:  xattr -dr com.apple.quarantine <Ordner>
+   - Richtet alle Pakete automatisch ein (Internet noetig, ca. 5 Minuten).
+   - Benoetigt Python 3.12 oder neuer. Falls nicht vorhanden, wird python.org geoeffnet,
+     alternativ im Terminal:  brew install python@3.12
+3. Starten: Doppelklick auf start.command (ggf. beim ersten Mal ebenfalls Rechtsklick -> Oeffnen).
+   Die App oeffnet sich im Browser unter http://127.0.0.1:5001
+   Das Terminal-Fenster muss waehrend der Arbeit offen bleiben; zum Beenden schliessen (oder Ctrl+C).
+   Tipp: start.command ins Dock ziehen oder ein Alias auf den Schreibtisch legen.
+4. Beim ersten Start unter "Einstellungen" Absenderdaten, Steuernummer und IBAN eintragen.
+
+Daten
+-----
+Alles liegt im Programmordner:
+  data/rechnung.db   Einstellungen, Kunden, Rechnungen
+  data/uploads/      hochgeladene Lieferantenrechnungen
+  Rechnungen/        fertige ZUGFeRD-PDFs
+Fuer eine Datensicherung oder einen Umzug auf einen anderen Rechner diese Ordner kopieren
+(die Daten sind zwischen Windows und Mac austauschbar).
+Zum Aktualisieren der Programmdateien die Ordner data und Rechnungen behalten.
+
+Mac-App (Rechnung.app)
+----------------------
+Die fertige App braucht kein Python. Nach "Programme" ziehen, beim ersten Start Rechtsklick -> Oeffnen.
+Daten: ~/Library/Application Support/Rechnung/  (Datenbank, Uploads)
+PDFs:  ~/Documents/Rechnungen/
+Neu bauen: pip install pyinstaller pywebview, dann
+  pyinstaller --noconfirm --windowed --name Rechnung --add-data "templates:templates" --add-data "static:static" \
+    --collect-all facturx --collect-all pymupdf --collect-all iso4217 --collect-submodules pikepdf main_app.py

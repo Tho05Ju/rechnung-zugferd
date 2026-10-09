@@ -10,10 +10,14 @@
 <div><label>Ort</label><input name="city" value="{{ c.city or '' if c else '' }}"></div>
 <div><label>Land</label><input name="country" value="{{ c.country or 'DE' if c else 'DE' }}"></div>
 <div><label>E-Mail</label><input name="email" value="{{ c.email or '' if c else '' }}"></div>
-<input type="hidden" name="vat_id" value="{{ c.vat_id or '' if c else '' }}">
-<div style="display:flex;gap:6px"><button class="primary">{{ 'Speichern' if c else 'Anlegen' }}</button></div></form>{% endmacro %}
+<div style="display:flex;gap:6px"><button class="primary">{{ 'Speichern' if c else 'Anlegen' }}</button></div>
+<div style="grid-column:1/-1;display:flex;gap:24px;align-items:end;flex-wrap:wrap"><div style="width:220px"><label>USt-IdNr. (bei Firmen, Pflicht für § 13b)</label><input name="vat_id" value="{{ c.vat_id or '' if c else '' }}" placeholder="DE123456789"></div>
+<div style="width:140px"><label>Debitorennr. (DATEV)</label><input name="debitor" value="{{ c.debitor or '' if c else '' }}" placeholder="automatisch"></div>
+<label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink);margin-bottom:8px"><input type="checkbox" name="bau13b" value="1" style="width:auto" {{ 'checked' if c and c.bau13b }}>Bauleistender – neue Rechnungen mit § 13b vorbelegen</label></div></form>{% endmacro %}
 <div class="card"><h2>Neuer Kunde</h2>{{ form(None) }}</div>
 {% for c in customers %}<div class="card" style="padding:12px 18px"><div class="mute" style="font-size:12px;margin-bottom:4px">Kunden-Nr. {{ c.id }}</div>{{ form(c) }}
-<form method="post" action="{{ url_for('customer_delete', cid=c.id) }}" onsubmit="return confirm('Kunde löschen? Bestehende Rechnungen bleiben unverändert.')" style="margin-top:6px"><button class="link err">löschen</button></form></div>
+<div style="display:flex;gap:16px;align-items:center;margin-top:6px">
+<form method="post" action="{{ url_for('new_invoice') }}"><input type="hidden" name="customer_id" value="{{ c.id }}"><button class="link">Neue Rechnung für diesen Kunden</button></form>
+<form method="post" action="{{ url_for('customer_delete', cid=c.id) }}" onsubmit="return confirm('Kunde löschen? Bestehende Rechnungen bleiben unverändert.')"><button class="link err">löschen</button></form></div></div>
 {% else %}<p class="mute">Noch keine Kunden.</p>{% endfor %}
 {% endblock %}

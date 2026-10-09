@@ -3,12 +3,13 @@ import datetime as dt
 import json
 import re
 import sqlite3
+import sys
 import uuid
 import warnings
 from decimal import Decimal
 from pathlib import Path
 
-from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
 warnings.filterwarnings("ignore")
 
@@ -17,13 +18,23 @@ from datanorm import parse_datanorm
 from collections import Counter
 from invoice_parser import parse_invoice
 from zugferd import create_zugferd
+from zugferd_reader import read_zugferd
+import datev
+
+
+def read_supplier_invoice(path):
+    """ZUGFeRD-XML hat Vorrang (Layout egal); ohne XML greift der Layout-Parser."""
+    return read_zugferd(path) or parse_invoice(path)
 
 BASE = Path(__file__).parent
-DATA = BASE / "data"
+if getattr(sys, "frozen", False):  # als .app: Daten ausserhalb des App-Pakets
+    DATA = Path.home() / "Library" / "Application Support" / "Rechnung"
+else:
+    DATA = BASE / "data"
 UPLOADS = DATA / "uploads"
-OUT = BASE / "Rechnungen"
+OUT = (Path.home() / "Documents" / "Rechnungen") if getattr(sys, "frozen", False) else BASE / "Rechnungen"
 for p in (DATA, UPLOADS, OUT):
-    p.mkdir(exist_ok=True)
+    p.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
 
@@ -32,6 +43,12 @@ SETTING_DEFAULTS = {
     "tax_number": "", "vat_id": "", "iban": "", "bic": "", "bank_name": "",
     "kleinunternehmer": "0", "vat_rate": "19", "payment_days": "14", "default_markup": "0",
     "number_format": "RE-{year}-{n:04d}", "next_number": "1",
+    # §13b UStG (Bauleistungen)
+    "reverse_note": "Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG.",
+    "freistellung_nr": "", "freistellung_bis": "",
+    # DATEV-Export (Werte vom Steuerberater bestätigen lassen; 8400 = SKR03-Erlöse 19 %, SKR04 wäre 4400)
+    "datev_berater": "", "datev_mandant": "", "datev_wj_beginn": "01.01.", "datev_sachkontenlaenge": "4",
+    "datev_erloes_konto": "8400", "datev_bu_19": "", "datev_erloes_konto_13b": "", "datev_bu_13b": "",
 }
 CUSTOMER_FIELDS = ["name", "name2", "street", "zip", "city", "country", "email", "vat_id"]
 
@@ -56,6 +73,11 @@ def db():
                 UNIQUE(source, supplier, article_no));
             CREATE INDEX IF NOT EXISTS idx_articles_no ON articles(article_no COLLATE NOCASE);
         """)
+        cols = {r["name"] for r in g.db.execute("PRAGMA table_info(customers)")}
+        for col, ddl in (("bau13b", "INTEGER DEFAULT 0"), ("debitor", "TEXT")):  # Migrationen: §13b-Voreinstellung, DATEV-Debitor
+            if col not in cols:
+                g.db.execute(f"ALTER TABLE customers ADD COLUMN {col} {ddl}")
+                g.db.commit()
     return g.db
 
 
@@ -108,8 +130,28 @@ def next_number(s):
 # ------------------------------------------------------------------ Seiten
 @app.get("/")
 def index():
-    rows = db().execute("SELECT * FROM invoices ORDER BY id DESC LIMIT 100").fetchall()
-    return render_template("index.html", invoices=rows, settings_ok=bool(get_settings()["name"]))
+    s = get_settings()
+    rows = []
+    for r in db().execute("SELECT * FROM invoices ORDER BY id DESC LIMIT 100"):
+        row = dict(r)
+        d = json.loads(r["data"])
+        # Einkauf aus den gespeicherten Positionen (stimmt damit auch für ältere Rechnungen); eigene Rechnungen haben keinen Einkauf
+        lines, totals = compute(d["items"], d.get("global_markup", "0"), s["vat_rate"], s["kleinunternehmer"] == "1",
+                                d.get("global_discount", "0"), d["meta"].get("tax_mode") == "13b")
+        row["cost"] = None if d.get("own") else totals["cost"]
+        if not row["net"]:  # frisch hochgeladener Entwurf: noch nie gespeichert
+            row["net"], row["gross"] = totals["net"], totals["gross"]
+        rows.append(row)
+    customers = db().execute("SELECT id, name, name2, zip, city FROM customers ORDER BY name").fetchall()
+    return render_template("index.html", invoices=rows, customers=customers, settings_ok=bool(s["name"]))
+
+
+def prepare_items(items):
+    for it in items:
+        it["qty"] = fmt_qty(it["qty"]).replace(".", "")
+        it["price"] = fmt_num(it["price"], 2 if D(it["price"]) == D(it["price"]).quantize(Decimal("0.01")) else 4)
+        it["price"] = it["price"].replace(".", "")
+    return items
 
 
 @app.post("/upload")
@@ -120,12 +162,8 @@ def upload():
     path = UPLOADS / f"{uuid.uuid4().hex}.pdf"
     f.save(path)
     s = get_settings()
-    parsed = parse_invoice(str(path))
-    items = parsed["items"]
-    for it in items:
-        it["qty"] = fmt_qty(it["qty"]).replace(".", "")
-        it["price"] = fmt_num(it["price"], 2 if D(it["price"]) == D(it["price"]).quantize(Decimal("0.01")) else 4)
-        it["price"] = it["price"].replace(".", "")
+    parsed = read_supplier_invoice(str(path))
+    items = prepare_items(parsed["items"])
     matched = match_articles(items, s)
     if matched:
         parsed["warnings"].append(f"{matched} von {len(items)} Positionen im Artikelstamm gefunden – Kalkulation: Listenpreis − Kundenrabatt.")
@@ -146,7 +184,8 @@ def upload():
         "supplier": parsed["supplier"], "warnings": parsed["warnings"],
         "delivery_address": cust if not known else {k: addr.get(k, "") for k in CUSTOMER_FIELDS},
         "meta": {"number": next_number(s), "date": dt.date.today().isoformat(),
-                 "delivery_date": (max(dates) if dates else dt.date.today()).isoformat(), "note": ""},
+                 "delivery_date": (max(dates) if dates else dt.date.today()).isoformat(), "note": "",
+                 "tax_mode": "13b" if known and known.get("bau13b") and s["kleinunternehmer"] != "1" else "standard"},
         "customer": cust, "global_markup": s["default_markup"], "global_discount": "0", "items": items,
     }
     cur = db().execute(
@@ -181,6 +220,31 @@ def match_articles(items, s):
     return n
 
 
+@app.post("/invoice/new")
+def new_invoice():
+    """Leere Rechnung ohne Lieferantenrechnung (z. B. eigene Leistungen), optional für einen vorhandenen Kunden."""
+    s = get_settings()
+    row = db().execute("SELECT * FROM customers WHERE id=?", (request.form.get("customer_id") or 0,)).fetchone()
+    cust = {k: (row[k] or "") if row else "" for k in CUSTOMER_FIELDS}
+    cust["country"] = cust["country"] or "DE"
+    cust["id"] = row["id"] if row else None
+    today = dt.date.today().isoformat()
+    data = {
+        "supplier": {}, "warnings": [], "own": True,
+        "delivery_address": {k: "" for k in CUSTOMER_FIELDS},
+        "meta": {"number": next_number(s), "date": today, "delivery_date": today, "note": "",
+                 "tax_mode": "13b" if row and row["bau13b"] and s["kleinunternehmer"] != "1" else "standard"},
+        "customer": cust, "global_markup": "0", "global_discount": "0",  # eigene Preise: kein Einkaufspreis, daher kein Aufschlag
+        "items": [{"article": "", "description": "", "qty": "1", "unit": "ST", "price": "0", "price_unit": "1",
+                   "markup": "", "mode": "markup", "list_price": "", "discount": "", "supplier_value": "", "mismatch": False}],
+    }
+    cur = db().execute(
+        "INSERT INTO invoices (status, number, data, source_pdf, customer_name, created, updated) VALUES ('draft',?,?,?,?,?,?)",
+        (data["meta"]["number"], json.dumps(data, ensure_ascii=False), None, cust["name"], now(), now()))
+    db().commit()
+    return redirect(url_for("invoice", iid=cur.lastrowid))
+
+
 def load_invoice(iid):
     row = db().execute("SELECT * FROM invoices WHERE id=?", (iid,)).fetchone()
     if not row:
@@ -198,9 +262,40 @@ def invoice(iid):
 
 
 @app.get("/invoice/<int:iid>/source")
-def source(iid):
-    row, _ = load_invoice(iid)
-    return send_file(UPLOADS / row["source_pdf"], mimetype="application/pdf")
+@app.get("/invoice/<int:iid>/source/<int:n>")
+def source(iid, n=0):
+    row, data = load_invoice(iid)
+    extras = data.get("extras", [])
+    if n and n > len(extras):
+        abort(404)
+    name = extras[n - 1]["file"] if n else row["source_pdf"]
+    if not name:  # eigene Rechnung ohne Lieferantenrechnung
+        abort(404)
+    return send_file(UPLOADS / name, mimetype="application/pdf")
+
+
+@app.post("/invoice/<int:iid>/add")
+def add_source(iid):
+    """Weitere Lieferantenrechnung einlesen und deren Positionen an den Entwurf anhängen."""
+    row, data = load_invoice(iid)
+    f = request.files.get("file")
+    if row["status"] == "final" or not f or not f.filename.lower().endswith(".pdf"):
+        return redirect(url_for("invoice", iid=iid))
+    path = UPLOADS / f"{uuid.uuid4().hex}.pdf"
+    f.save(path)
+    parsed = read_supplier_invoice(str(path))
+    new_items = prepare_items(parsed["items"])
+    sup = parsed["supplier"]
+    blank = lambda it: not (it["description"].strip() or it["article"].strip()) and D(it["price"]) == 0
+    data["items"] = [it for it in data["items"] if not blank(it)] + new_items  # leere Platzhalter-Zeile einer eigenen Rechnung entfällt
+    data.setdefault("extras", []).append({"file": path.name, "name": sup.get("name", ""), "invoice_no": sup.get("invoice_no", ""),
+                                          "date": sup.get("date", ""), "count": len(new_items)})
+    data["warnings"] = data.get("warnings", []) + [f"{sup.get('name') or 'Weitere Rechnung'} Nr. {sup.get('invoice_no') or '?'}: {w}" for w in parsed["warnings"]]
+    if not new_items:
+        data["warnings"].append(f"Aus der angehängten Rechnung {f.filename} konnten keine Positionen gelesen werden.")
+    db().execute("UPDATE invoices SET data=?, updated=? WHERE id=?", (json.dumps(data, ensure_ascii=False), now(), iid))
+    db().commit()
+    return redirect(url_for("invoice", iid=iid))
 
 
 @app.get("/invoice/<int:iid>/download")
@@ -213,9 +308,14 @@ def download(iid):
 
 @app.post("/invoice/<int:iid>/delete")
 def delete_invoice(iid):
-    row, _ = load_invoice(iid)
+    row, data = load_invoice(iid)
+    if row["status"] != "draft":  # fertige Rechnungen bleiben erhalten (Aufbewahrungspflicht, keine Nummernlücken)
+        abort(403)
     db().execute("DELETE FROM invoices WHERE id=?", (iid,))
     db().commit()
+    for name in [row["source_pdf"]] + [x["file"] for x in data.get("extras", [])]:
+        if name:
+            (UPLOADS / name).unlink(missing_ok=True)
     return redirect(url_for("index"))
 
 
@@ -223,6 +323,7 @@ def delete_invoice(iid):
 def clean_payload(p):
     c = {k: str(p["customer"].get(k, "") or "").strip() for k in CUSTOMER_FIELDS}
     c["country"] = (c["country"] or "DE").upper()
+    c["vat_id"] = re.sub(r"\s", "", c["vat_id"]).upper()  # EN 16931: USt-IdNr. ohne Leerzeichen
     c["id"] = p["customer"].get("id")
     items = []
     for it in p["items"]:
@@ -236,7 +337,18 @@ def clean_payload(p):
         })
     m = p["meta"]
     meta = {k: str(m.get(k, "")).strip() for k in ("number", "date", "delivery_date", "note")}
+    meta["tax_mode"] = "13b" if m.get("tax_mode") == "13b" else "standard"
     return c, items, meta, str(p.get("global_markup", "0")).strip(), str(p.get("global_discount", "0")).strip()
+
+
+def ensure_debitor(cid):
+    """Kunde bekommt eine DATEV-Debitorennummer (nächste freie ab 10000, bei 5-stelligen Sachkonten ab 100000)."""
+    row = db().execute("SELECT debitor FROM customers WHERE id=?", (cid,)).fetchone()
+    if not row or (row["debitor"] or "").strip():
+        return
+    start = datev.first_debitor(get_settings()["datev_sachkontenlaenge"] or 4)
+    used = [int(r["debitor"]) for r in db().execute("SELECT debitor FROM customers") if (r["debitor"] or "").isdigit()]
+    db().execute("UPDATE customers SET debitor=? WHERE id=?", (str(max(used + [start - 1]) + 1), cid))
 
 
 def upsert_customer(c, as_new):
@@ -253,6 +365,7 @@ def upsert_customer(c, as_new):
     else:
         cid = db().execute("INSERT INTO customers (" + ",".join(CUSTOMER_FIELDS) + ",created,updated) VALUES (" +
                            ",".join("?" * (len(CUSTOMER_FIELDS) + 2)) + ")", vals + [now(), now()]).lastrowid
+    ensure_debitor(cid)
     return cid
 
 
@@ -262,7 +375,9 @@ def persist(iid, payload):
     if payload.get("save_customer", True):
         c["id"] = upsert_customer(c, bool(payload.get("as_new")))
     s = get_settings()
-    lines, totals = compute(items, gm, s["vat_rate"], s["kleinunternehmer"] == "1", gd)
+    lines, totals = compute(items, gm, s["vat_rate"], s["kleinunternehmer"] == "1", gd, meta["tax_mode"] == "13b")
+    if payload.get("remember_13b") and c.get("id"):  # Voreinstellung am Kunden für künftige Rechnungen
+        db().execute("UPDATE customers SET bau13b=? WHERE id=?", (1 if meta["tax_mode"] == "13b" else 0, c["id"]))
     data.update(meta=meta, customer=c, items=items, global_markup=gm, global_discount=gd)
     db().execute("UPDATE invoices SET data=?, number=?, customer_name=?, net=?, gross=?, updated=? WHERE id=?",
                  (json.dumps(data, ensure_ascii=False), meta["number"], c["name"], str(totals["net"]), str(totals["gross"]), now(), iid))
@@ -295,6 +410,13 @@ def validate(data, s):
         if not c[k]:
             err.append(f"Kunde: {label} fehlt.")
     m = data["meta"]
+    if m.get("tax_mode") == "13b":
+        if s["kleinunternehmer"] == "1":
+            err.append("§ 13b UStG ist mit der Kleinunternehmerregelung (§ 19 UStG) nicht vereinbar – bitte einen der beiden abschalten.")
+        vid = re.sub(r"\s", "", c.get("vat_id") or "").upper()
+        if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{2,12}", vid):
+            err.append("§ 13b: Beim Kunden fehlt die USt-IdNr. (Format z. B. DE123456789). Sie ist bei Steuerschuldnerschaft des Leistungsempfängers Pflicht – "
+                       "die Steuernummer genügt für die ZUGFeRD-Rechnung nicht.")
     for k, label in (("number", "Rechnungsnummer"), ("date", "Rechnungsdatum"), ("delivery_date", "Lieferdatum")):
         if not m[k]:
             err.append(f"{label} fehlt.")
@@ -310,19 +432,37 @@ def validate(data, s):
     return err
 
 
-@app.post("/api/invoice/<int:iid>/pdf")
-def api_pdf(iid):
+def build_pdf(iid):
+    """Speichert den Entwurf, prüft ihn und erzeugt die ZUGFeRD-PDF. Liefert (Fehlerantwort | None, Kontext)."""
     row, data, lines, totals, s = persist(iid, request.get_json())
     err = validate(data, s)
     clash = db().execute("SELECT id FROM invoices WHERE number=? AND status='final' AND id<>?", (data["meta"]["number"], iid)).fetchone()
     if clash:
         err.append(f"Die Rechnungsnummer {data['meta']['number']} ist bereits vergeben.")
     if err:
-        return jsonify({"ok": False, "errors": err, "customer_id": data["customer"]["id"]}), 422
+        return (jsonify({"ok": False, "errors": err, "customer_id": data["customer"]["id"]}), 422), None
     try:
         pdf, _xml = create_zugferd(data, seller_view(s), lines, totals)
     except Exception as e:  # XSD-/PDF-Fehler sichtbar machen
-        return jsonify({"ok": False, "errors": [f"Erzeugung fehlgeschlagen: {e}"]}), 500
+        return (jsonify({"ok": False, "errors": [f"Erzeugung fehlgeschlagen: {e}"]}), 500), None
+    return None, (row, data, lines, totals, s, pdf)
+
+
+@app.post("/api/invoice/<int:iid>/preview")
+def api_preview(iid):
+    """Vorschau: erzeugt die PDF, ohne Status, Nummernzähler oder Ablage zu ändern."""
+    fail, ctx = build_pdf(iid)
+    if fail:
+        return fail
+    return Response(ctx[5], mimetype="application/pdf", headers={"X-Customer-Id": str(ctx[1]["customer"]["id"] or "")})
+
+
+@app.post("/api/invoice/<int:iid>/pdf")
+def api_pdf(iid):
+    fail, ctx = build_pdf(iid)
+    if fail:
+        return fail
+    row, data, lines, totals, s, pdf = ctx
     name = re.sub(r"[^\w.-]", "_", f"Rechnung_{data['meta']['number']}") + ".pdf"
     (OUT / name).write_bytes(pdf)
     db().execute("UPDATE invoices SET status='final', out_pdf=?, updated=? WHERE id=?", (name, now(), iid))
@@ -435,12 +575,20 @@ def customers():
 def customer_save():
     c = {k: request.form.get(k, "").strip() for k in CUSTOMER_FIELDS}
     c["country"] = (c["country"] or "DE").upper()
+    c["vat_id"] = re.sub(r"\s", "", c["vat_id"]).upper()
     cid = request.form.get("id")
+    bau = 1 if request.form.get("bau13b") else 0
+    debitor = re.sub(r"\D", "", request.form.get("debitor", ""))
     if cid:
-        db().execute("UPDATE customers SET " + ",".join(f"{k}=?" for k in CUSTOMER_FIELDS) + ",updated=? WHERE id=?",
-                     [c[k] for k in CUSTOMER_FIELDS] + [now(), cid])
+        db().execute("UPDATE customers SET " + ",".join(f"{k}=?" for k in CUSTOMER_FIELDS) + ",bau13b=?,debitor=?,updated=? WHERE id=?",
+                     [c[k] for k in CUSTOMER_FIELDS] + [bau, debitor, now(), cid])
+        ensure_debitor(cid)
     elif c["name"]:
-        upsert_customer(c, True)
+        new_id = upsert_customer(c, True)
+        if new_id:
+            db().execute("UPDATE customers SET bau13b=? WHERE id=?", (bau, new_id))
+            if debitor:
+                db().execute("UPDATE customers SET debitor=? WHERE id=?", (debitor, new_id))
     db().commit()
     return redirect(url_for("customers"))
 
@@ -477,6 +625,56 @@ def settings():
         db().commit()
         return redirect(url_for("index"))
     return render_template("settings.html", s=get_settings(), logo=LOGO.exists())
+
+
+# ------------------------------------------------------------------ DATEV-Export
+def _export_period():
+    today = dt.date.today()
+    def parse(v, default):
+        try:
+            return dt.date.fromisoformat(v)
+        except (TypeError, ValueError):
+            return default
+    return parse(request.args.get("von"), dt.date(today.year, 1, 1)), parse(request.args.get("bis"), today)
+
+
+def _export_invoices(von, bis):
+    out = []
+    for r in db().execute("SELECT * FROM invoices WHERE status='final' ORDER BY id"):
+        data = json.loads(r["data"])
+        try:
+            day = dt.date.fromisoformat(data["meta"]["date"])
+        except (KeyError, ValueError):
+            day = None
+        if day and von <= day <= bis:
+            out.append({"id": r["id"], "number": r["number"], "net": r["net"], "gross": r["gross"], "data": data, "date": day})
+    return sorted(out, key=lambda x: (x["date"], x["number"]))
+
+
+@app.get("/export")
+def export_page():
+    von, bis = _export_period()
+    invoices = _export_invoices(von, bis)
+    s = get_settings()
+    return render_template("export.html", von=von.isoformat(), bis=bis.isoformat(), invoices=invoices,
+                           problems=datev.check_settings(s))
+
+
+@app.get("/export/datev")
+def export_datev():
+    von, bis = _export_period()
+    invoices = _export_invoices(von, bis)
+    s = get_settings()
+    for inv in invoices:  # fehlende Debitorennummern vergeben, bevor exportiert wird
+        if inv["data"]["customer"].get("id"):
+            ensure_debitor(inv["data"]["customer"]["id"])
+    db().commit()
+    debitors = {r["id"]: r["debitor"] for r in db().execute("SELECT id, debitor FROM customers")}
+    blob, errors, _n = datev.build_export(invoices, s, debitors, von, bis)
+    if errors:
+        return render_template("export.html", von=von.isoformat(), bis=bis.isoformat(), invoices=invoices, problems=errors), 422
+    name = f"EXTF_Buchungsstapel_{von:%Y%m%d}-{bis:%Y%m%d}.csv"
+    return Response(blob, mimetype="text/csv; charset=windows-1252", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get("/logo")

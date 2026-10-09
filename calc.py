@@ -28,11 +28,12 @@ def has_value(v):
     return str(v if v is not None else "").strip() != ""
 
 
-def compute(items, global_markup, vat_rate, small_business=False, global_discount="0"):
+def compute(items, global_markup, vat_rate, small_business=False, global_discount="0", reverse_charge=False):
     """Liefert (lines, totals).
 
     mode "markup": VK = EK * (1 + Aufschlag%); mode "list": VK = Listenpreis * (1 - Kundenrabatt%).
-    Ein Wert in der Position überschreibt jeweils den globalen Wert (auch 0)."""
+    Ein Wert in der Position überschreibt jeweils den globalen Wert (auch 0).
+    reverse_charge: §13b UStG – Rechnung netto ohne Umsatzsteuer (Steuerschuldner ist der Leistungsempfänger)."""
     gm, gd = D(global_markup), D(global_discount)
     lines = []
     for it in items:
@@ -56,7 +57,7 @@ def compute(items, global_markup, vat_rate, small_business=False, global_discoun
                       "unit_price": unit_price, "total": total, "cost": cost})
     net = sum((l["total"] for l in lines), Decimal(0))
     cost = sum((l["cost"] for l in lines), Decimal(0))
-    rate = Decimal(0) if small_business else D(vat_rate, "19")
+    rate = Decimal(0) if (small_business or reverse_charge) else D(vat_rate, "19")
     tax = q2(net * rate / 100)
     totals = {"net": net, "cost": cost, "markup_amount": net - cost, "rate": rate, "tax": tax, "gross": net + tax}
     return lines, totals

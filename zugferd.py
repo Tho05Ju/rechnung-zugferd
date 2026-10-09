@@ -32,6 +32,27 @@ def unit_code(unit):
     return UNIT_CODES.get(unit.strip().upper(), "C62")
 
 
+DEFAULT_REVERSE_NOTE = "Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG."
+
+
+def is_reverse(meta, seller):
+    """§13b-Rechnung? (Kleinunternehmer können das nicht, dort gilt § 19.)"""
+    return meta.get("tax_mode") == "13b" and not seller["kleinunternehmer"]
+
+
+def reverse_note(seller):
+    return (seller.get("reverse_note") or "").strip() or DEFAULT_REVERSE_NOTE
+
+
+def freistellung_line(seller):
+    """Optionaler Hinweis auf die eigene Freistellungsbescheinigung (§ 48b EStG)."""
+    nr = (seller.get("freistellung_nr") or "").strip()
+    if not nr:
+        return ""
+    until = (seller.get("freistellung_bis") or "").strip()
+    return f"Freistellungsbescheinigung nach § 48b EStG liegt vor (Nr. {nr}" + (f", gültig bis {until}" if until else "") + ")."
+
+
 def _d(date_iso):
     return dt.date.fromisoformat(date_iso)
 
@@ -52,8 +73,9 @@ def _amt(x):
 def build_xml(inv, seller, lines, totals):
     meta, cust, items = inv["meta"], inv["customer"], inv["items"]
     small = seller["kleinunternehmer"]
+    reverse = is_reverse(meta, seller)
     rate = totals["rate"]
-    cat = "E" if small else "S"
+    cat = "E" if small else ("AE" if reverse else "S")  # E = befreit (§19), AE = Reverse Charge (§13b)
     due = _d(meta["date"]) + dt.timedelta(days=int(D(seller["payment_days"])))
     e = escape
 
@@ -94,7 +116,8 @@ def build_xml(inv, seller, lines, totals):
     if seller["tax_number"]:
         seller_extra += f'<ram:SpecifiedTaxRegistration><ram:ID schemeID="FC">{e(seller["tax_number"])}</ram:ID></ram:SpecifiedTaxRegistration>'
     if seller["vat_id"]:
-        seller_extra += f'<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">{e(seller["vat_id"])}</ram:ID></ram:SpecifiedTaxRegistration>'
+        vat_clean = re.sub(r"\s", "", seller["vat_id"]).upper()
+        seller_extra += f'<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">{e(vat_clean)}</ram:ID></ram:SpecifiedTaxRegistration>'
     buyer_extra = ""
     if cust.get("email"):
         buyer_extra += f'<ram:URIUniversalCommunication><ram:URIID schemeID="EM">{e(cust["email"])}</ram:URIID></ram:URIUniversalCommunication>'
@@ -105,10 +128,15 @@ def build_xml(inv, seller, lines, totals):
     notes = []
     if small:
         notes.append("Kein Umsatzsteuerausweis aufgrund Kleinunternehmerregelung gemäß § 19 UStG.")
+    if reverse:
+        notes.append(reverse_note(seller))
+        if freistellung_line(seller):
+            notes.append(freistellung_line(seller))
     if meta.get("note"):
         notes.append(meta["note"])
     note_xml = "".join(f"<ram:IncludedNote><ram:Content>{e(n)}</ram:Content></ram:IncludedNote>" for n in notes)
-    exemption = ('<ram:ExemptionReason>Kleinunternehmer gemäß § 19 UStG</ram:ExemptionReason>' if small else "")
+    exemption = ('<ram:ExemptionReason>Kleinunternehmer gemäß § 19 UStG</ram:ExemptionReason>' if small
+                 else f'<ram:ExemptionReason>{e(reverse_note(seller))}</ram:ExemptionReason>' if reverse else "")
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -211,6 +239,7 @@ def build_pdf(inv, seller, lines, totals):
     _register_fonts()
     meta, cust, items = inv["meta"], inv["customer"], inv["items"]
     small = seller["kleinunternehmer"]
+    reverse = is_reverse(meta, seller)
     W, H = A4
     L, R = 25 * mm, 20 * mm
     buf = io.BytesIO()
@@ -265,6 +294,8 @@ def build_pdf(inv, seller, lines, totals):
                 ("Lieferdatum:", _de_date(meta["delivery_date"]))]
         if cust.get("id"):
             info.append(("Kunden-Nr.:", str(cust["id"])))
+        if reverse and cust.get("vat_id"):
+            info.append(("USt-IdNr. Kunde:", cust["vat_id"]))
         y = H - 58 * mm
         for k, v in info:
             c.setFont("Body", 9)
@@ -326,11 +357,13 @@ def build_pdf(inv, seller, lines, totals):
     ]))
     story += [tbl, Spacer(1, 4 * mm)]
 
+    tax_label = ("Umsatzsteuer: Steuerschuldner ist der Leistungsempfänger (§ 13b UStG)" if reverse else
+                 f'zzgl. Umsatzsteuer {fmt_num(totals["rate"], 0 if totals["rate"] == totals["rate"].to_integral() else 2)} %')
     tot = [[Paragraph("Summe netto", base), Paragraph(f'{fmt_num(totals["net"])} €', right)],
-           [Paragraph(f'zzgl. Umsatzsteuer {fmt_num(totals["rate"], 0 if totals["rate"] == totals["rate"].to_integral() else 2)} %', base),
+           [Paragraph(tax_label, base),
             Paragraph(f'{fmt_num(totals["tax"])} €', right)],
            [Paragraph("Gesamtbetrag", head), Paragraph(f'{fmt_num(totals["gross"])} €', head_r)]]
-    tt = Table(tot, colWidths=[45 * mm, 30 * mm], hAlign="RIGHT")
+    tt = Table(tot, colWidths=[(60 if reverse else 45) * mm, 30 * mm], hAlign="RIGHT")
     tt.setStyle(TableStyle([("LINEABOVE", (0, 2), (-1, 2), 0.8, colors.black), ("TOPPADDING", (0, 0), (-1, -1), 2),
                             ("BOTTOMPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2)]))
     due = _d(meta["date"]) + dt.timedelta(days=int(D(seller["payment_days"])))
@@ -338,6 +371,10 @@ def build_pdf(inv, seller, lines, totals):
             f'Rechnungsnummer {esc(meta["number"])} auf das unten genannte Konto.']
     if small:
         foot.append("Kein Umsatzsteuerausweis aufgrund Kleinunternehmerregelung gemäß § 19 UStG.")
+    if reverse:
+        foot.append(f"<b>{esc(reverse_note(seller))}</b>")
+        if freistellung_line(seller):
+            foot.append(esc(freistellung_line(seller)))
     if meta.get("note"):
         foot.append(esc(meta["note"]).replace("\n", "<br/>"))
     story.append(KeepTogether([tt, Spacer(1, 6 * mm)] + [Paragraph(t, base) for t in foot[:1]] +
