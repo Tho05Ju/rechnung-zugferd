@@ -28,9 +28,12 @@ def has_value(v):
     return str(v if v is not None else "").strip() != ""
 
 
-def compute(items, global_markup, vat_rate, small_business=False):
-    """Liefert (lines, totals). Positions-Aufschlag überschreibt den globalen Aufschlag."""
-    g = D(global_markup)
+def compute(items, global_markup, vat_rate, small_business=False, global_discount="0"):
+    """Liefert (lines, totals).
+
+    mode "markup": VK = EK * (1 + Aufschlag%); mode "list": VK = Listenpreis * (1 - Kundenrabatt%).
+    Ein Wert in der Position überschreibt jeweils den globalen Wert (auch 0)."""
+    gm, gd = D(global_markup), D(global_discount)
     lines = []
     for it in items:
         qty = D(it.get("qty"))
@@ -38,17 +41,19 @@ def compute(items, global_markup, vat_rate, small_business=False):
         basis = D(it.get("price_unit"), "1")
         if basis <= 0:
             basis = Decimal(1)
-        own = has_value(it.get("markup"))
-        m = D(it.get("markup")) if own else g
-        unit_price = q2(price * (1 + m / 100))
-        lines.append({
-            "markup": m,
-            "markup_own": own,
-            "basis": basis,
-            "unit_price": unit_price,
-            "total": q2(qty * unit_price / basis),
-            "cost": q2(qty * price / basis),
-        })
+        mode = "list" if it.get("mode") == "list" else "markup"
+        if mode == "list":
+            own = has_value(it.get("discount"))
+            pct = D(it.get("discount")) if own else gd
+            unit_price = q2(D(it.get("list_price")) * (1 - pct / 100))
+        else:
+            own = has_value(it.get("markup"))
+            pct = D(it.get("markup")) if own else gm
+            unit_price = q2(price * (1 + pct / 100))
+        total = q2(qty * unit_price / basis)
+        cost = q2(qty * price / basis) if price > 0 else total  # ohne EK keine Marge ausweisen
+        lines.append({"mode": mode, "markup": pct, "markup_own": own, "basis": basis,
+                      "unit_price": unit_price, "total": total, "cost": cost})
     net = sum((l["total"] for l in lines), Decimal(0))
     cost = sum((l["cost"] for l in lines), Decimal(0))
     rate = Decimal(0) if small_business else D(vat_rate, "19")

@@ -3,3 +3,4 @@ pymupdf
 reportlab
 pikepdf
 factur-x
+pillow

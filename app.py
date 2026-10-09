@@ -13,6 +13,8 @@ from flask import Flask, abort, g, jsonify, redirect, render_template, request, 
 warnings.filterwarnings("ignore")
 
 from calc import D, compute, fmt_num, fmt_qty
+from datanorm import parse_datanorm
+from collections import Counter
 from invoice_parser import parse_invoice
 from zugferd import create_zugferd
 
@@ -47,6 +49,12 @@ def db():
             CREATE TABLE IF NOT EXISTS invoices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT DEFAULT 'draft', number TEXT, data TEXT,
                 source_pdf TEXT, out_pdf TEXT, customer_name TEXT, net TEXT, gross TEXT, created TEXT, updated TEXT);
+            CREATE TABLE IF NOT EXISTS articles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL DEFAULT 'own', supplier TEXT NOT NULL DEFAULT '',
+                article_no TEXT NOT NULL, short1 TEXT, short2 TEXT, unit TEXT DEFAULT 'ST', list_price TEXT DEFAULT '0',
+                price_unit INTEGER DEFAULT 1, wg TEXT, discount_group TEXT, updated TEXT,
+                UNIQUE(source, supplier, article_no));
+            CREATE INDEX IF NOT EXISTS idx_articles_no ON articles(article_no COLLATE NOCASE);
         """)
     return g.db
 
@@ -118,6 +126,9 @@ def upload():
         it["qty"] = fmt_qty(it["qty"]).replace(".", "")
         it["price"] = fmt_num(it["price"], 2 if D(it["price"]) == D(it["price"]).quantize(Decimal("0.01")) else 4)
         it["price"] = it["price"].replace(".", "")
+    matched = match_articles(items, s)
+    if matched:
+        parsed["warnings"].append(f"{matched} von {len(items)} Positionen im Artikelstamm gefunden – Kalkulation: Listenpreis − Kundenrabatt.")
     addr = parsed["deliveries"][0]["address"] if parsed["deliveries"] else {k: "" for k in CUSTOMER_FIELDS}
     cust = {k: addr.get(k, "") for k in CUSTOMER_FIELDS}
     cust["country"] = "DE"
@@ -136,13 +147,38 @@ def upload():
         "delivery_address": cust if not known else {k: addr.get(k, "") for k in CUSTOMER_FIELDS},
         "meta": {"number": next_number(s), "date": dt.date.today().isoformat(),
                  "delivery_date": (max(dates) if dates else dt.date.today()).isoformat(), "note": ""},
-        "customer": cust, "global_markup": s["default_markup"], "items": items,
+        "customer": cust, "global_markup": s["default_markup"], "global_discount": "0", "items": items,
     }
     cur = db().execute(
         "INSERT INTO invoices (status, number, data, source_pdf, customer_name, created, updated) VALUES ('draft',?,?,?,?,?,?)",
         (data["meta"]["number"], json.dumps(data, ensure_ascii=False), path.name, cust["name"], now(), now()))
     db().commit()
     return redirect(url_for("invoice", iid=cur.lastrowid))
+
+
+def match_articles(items, s):
+    """Positionen der Lieferantenrechnung im Artikelstamm suchen (Artikelnr. oder Hersteller-Codes)."""
+    n = 0
+    for it in items:
+        it.setdefault("mode", "markup")
+        cands = [it["article"]] + re.split(r"[\s/]+", it.get("supplier_codes", ""))
+        art = None
+        for c in filter(None, cands):
+            art = db().execute("SELECT * FROM articles WHERE article_no=? COLLATE NOCASE ORDER BY source='own' DESC LIMIT 1", (c,)).fetchone()
+            if art and D(art["list_price"]) > 0:
+                break
+            art = None
+        if not art:
+            continue
+        basis = D(art["price_unit"], "1") or Decimal(1)
+        old = D(it["price_unit"], "1")
+        if old != basis:  # EK auf die Preiseinheit des Stamms umrechnen
+            it["price"] = fmt_num(D(it["price"]) * basis / old, 2).replace(".", "")
+            it["price_unit"] = str(int(basis))
+        it["list_price"] = fmt_num(art["list_price"], 2).replace(".", "")
+        it["mode"] = "list"
+        n += 1
+    return n
 
 
 def load_invoice(iid):
@@ -194,12 +230,13 @@ def clean_payload(p):
             "article": str(it.get("article", "")).strip(), "description": str(it.get("description", "")).strip(),
             "qty": str(it.get("qty", "")).strip(), "unit": str(it.get("unit", "")).strip() or "ST",
             "price": str(it.get("price", "")).strip(), "price_unit": str(it.get("price_unit", "1")) or "1",
-            "markup": str(it.get("markup", "")).strip(),
+            "markup": str(it.get("markup", "")).strip(), "discount": str(it.get("discount", "")).strip(),
+            "list_price": str(it.get("list_price", "")).strip(), "mode": "list" if it.get("mode") == "list" else "markup",
             "mismatch": bool(it.get("mismatch")), "supplier_value": it.get("supplier_value", ""),
         })
     m = p["meta"]
     meta = {k: str(m.get(k, "")).strip() for k in ("number", "date", "delivery_date", "note")}
-    return c, items, meta, str(p.get("global_markup", "0")).strip()
+    return c, items, meta, str(p.get("global_markup", "0")).strip(), str(p.get("global_discount", "0")).strip()
 
 
 def upsert_customer(c, as_new):
@@ -221,12 +258,12 @@ def upsert_customer(c, as_new):
 
 def persist(iid, payload):
     row, data = load_invoice(iid)
-    c, items, meta, gm = clean_payload(payload)
+    c, items, meta, gm, gd = clean_payload(payload)
     if payload.get("save_customer", True):
         c["id"] = upsert_customer(c, bool(payload.get("as_new")))
     s = get_settings()
-    lines, totals = compute(items, gm, s["vat_rate"], s["kleinunternehmer"] == "1")
-    data.update(meta=meta, customer=c, items=items, global_markup=gm)
+    lines, totals = compute(items, gm, s["vat_rate"], s["kleinunternehmer"] == "1", gd)
+    data.update(meta=meta, customer=c, items=items, global_markup=gm, global_discount=gd)
     db().execute("UPDATE invoices SET data=?, number=?, customer_name=?, net=?, gross=?, updated=? WHERE id=?",
                  (json.dumps(data, ensure_ascii=False), meta["number"], c["name"], str(totals["net"]), str(totals["gross"]), now(), iid))
     db().commit()
@@ -268,6 +305,8 @@ def validate(data, s):
             err.append(f"Position {i}: Bezeichnung fehlt.")
         if D(it["qty"]) <= 0:
             err.append(f"Position {i}: Menge muss größer 0 sein.")
+        if it["mode"] == "list" and D(it["list_price"]) <= 0:
+            err.append(f"Position {i}: Listenpreis fehlt (Modus „Liste“).")
     return err
 
 
@@ -291,6 +330,98 @@ def api_pdf(iid):
         db().execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('next_number',?)", (str(int(D(s["next_number"], "1")) + 1),))
     db().commit()
     return jsonify(result_json(lines, totals, {"download": url_for("download", iid=iid), "file": name}))
+
+
+# ------------------------------------------------------------------ Artikelstamm
+def _like_filter(q):
+    where, args = [], []
+    for tok in q.split():
+        where.append("(article_no LIKE ? OR short1 LIKE ? OR short2 LIKE ?)")
+        args += [f"%{tok}%"] * 3
+    return (" WHERE " + " AND ".join(where)) if where else "", args
+
+
+@app.get("/articles")
+def articles():
+    q = request.args.get("q", "").strip()
+    page = max(1, int(request.args.get("page", 1) or 1))
+    where, args = _like_filter(q)
+    total = db().execute("SELECT COUNT(*) FROM articles" + where, args).fetchone()[0]
+    rows = db().execute("SELECT * FROM articles" + where + " ORDER BY source='own' DESC, supplier, article_no LIMIT 50 OFFSET ?",
+                        args + [(page - 1) * 50]).fetchall()
+    sup = db().execute("SELECT supplier, source, COUNT(*) n FROM articles GROUP BY supplier, source").fetchall()
+    return render_template("articles.html", rows=rows, q=q, page=page, total=total, pages=(total + 49) // 50, suppliers=sup,
+                           report=request.args.get("report", ""))
+
+
+@app.get("/api/articles/search")
+def articles_search():
+    where, args = _like_filter(request.args.get("q", "").strip())
+    rows = db().execute("SELECT * FROM articles" + where + " ORDER BY source='own' DESC, article_no LIMIT 20", args).fetchall() if where else []
+    return jsonify([dict(r) for r in rows])
+
+
+@app.post("/articles/save")
+def article_save():
+    f = request.form
+    vals = (f.get("article_no", "").strip(), f.get("short1", "").strip(), f.get("short2", "").strip(),
+            f.get("unit", "").strip() or "ST", str(D(f.get("list_price"))), int(D(f.get("price_unit"), "1")), now())
+    if not vals[0]:
+        return redirect(url_for("articles"))
+    if f.get("id"):
+        db().execute("UPDATE articles SET article_no=?, short1=?, short2=?, unit=?, list_price=?, price_unit=?, updated=? WHERE id=? AND source='own'",
+                     vals + (f["id"],))
+    else:
+        db().execute("INSERT INTO articles (source, supplier, article_no, short1, short2, unit, list_price, price_unit, updated) "
+                     "VALUES ('own','',?,?,?,?,?,?,?) ON CONFLICT(source, supplier, article_no) DO UPDATE SET short1=excluded.short1, "
+                     "short2=excluded.short2, unit=excluded.unit, list_price=excluded.list_price, price_unit=excluded.price_unit, updated=excluded.updated", vals)
+    db().commit()
+    return redirect(url_for("articles"))
+
+
+@app.post("/articles/<int:aid>/delete")
+def article_delete(aid):
+    db().execute("DELETE FROM articles WHERE id=? AND source='own'", (aid,))
+    db().commit()
+    return redirect(url_for("articles"))
+
+
+@app.post("/articles/import")
+def articles_import():
+    supplier = request.form.get("supplier", "").strip()
+    files = [f for f in request.files.getlist("files") if f.filename]
+    if not supplier or not files:
+        return redirect(url_for("articles", report="Bitte Lieferant angeben und mindestens eine Datei wählen."))
+    d = db()
+    existing = {r[0].lower() for r in d.execute("SELECT article_no FROM articles WHERE source='datanorm' AND supplier=?", (supplier,))}
+    stats, new, upd, deleted, batch = Counter(), 0, 0, 0, []
+    sql = ("INSERT INTO articles (source, supplier, article_no, short1, short2, unit, list_price, price_unit, wg, discount_group, updated) "
+           "VALUES ('datanorm',?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source, supplier, article_no) DO UPDATE SET short1=excluded.short1, "
+           "short2=excluded.short2, unit=excluded.unit, list_price=excluded.list_price, price_unit=excluded.price_unit, "
+           "wg=excluded.wg, discount_group=excluded.discount_group, updated=excluded.updated")
+    ts = now()
+    for rec in parse_datanorm((f.stream for f in files), stats):
+        if rec["op"] == "delete":
+            d.execute("DELETE FROM articles WHERE source='datanorm' AND supplier=? AND article_no=?", (supplier, rec["article_no"]))
+            existing.discard(rec["article_no"].lower())
+            deleted += 1
+            continue
+        key = rec["article_no"].lower()
+        new, upd = (new + 1, upd) if key not in existing else (new, upd + 1)
+        existing.add(key)
+        batch.append((supplier, rec["article_no"], rec["short1"], rec["short2"], rec["unit"], str(rec["list_price"]),
+                      rec["price_unit"], rec["wg"], rec["discount_group"], ts))
+        if len(batch) >= 5000:
+            d.executemany(sql, batch)
+            batch = []
+    if batch:
+        d.executemany(sql, batch)
+    d.commit()
+    skipped = ", ".join(f"{k.replace('skipped_', 'Satzart ')}: {v}" for k, v in sorted(stats.items()) if k.startswith("skipped_"))
+    report = f"Import {supplier}: {new} neu, {upd} aktualisiert, {deleted} gelöscht, {stats['errors']} fehlerhafte Zeilen." + (f" Übersprungen: {skipped}." if skipped else "")
+    if new + upd + deleted == 0:
+        report += " Es wurden keine Artikel erkannt – Datei ist evtl. nicht Datanorm 4 (semikolongetrennt)."
+    return redirect(url_for("articles", report=report))
 
 
 # ------------------------------------------------------------------ Kunden & Einstellungen
@@ -353,6 +484,14 @@ def logo():
     if not LOGO.exists():
         abort(404)
     return send_file(LOGO, mimetype="image/png", max_age=0)
+
+
+@app.context_processor
+def inject_version():
+    try:
+        return {"version": (BASE / "VERSION").read_text().strip()}
+    except OSError:
+        return {"version": ""}
 
 
 @app.template_filter("money")

@@ -24,15 +24,18 @@
 <div><label>Lieferdatum *</label><input type="date" data-m="delivery_date"></div>
 <div><label>Zahlungsziel</label><input value="{{ settings.payment_days }} Tage" disabled></div></div>
 <div style="margin-top:12px"><label>Hinweistext (optional, erscheint auf der Rechnung)</label><textarea data-m="note" rows="2"></textarea></div>
-<div style="margin-top:12px;display:flex;gap:12px;align-items:end"><div style="width:180px"><label><b>Aufschlag gesamt (%)</b></label><input id="global-markup" class="num" style="font-weight:700"></div>
-<div class="hint" style="margin:0 0 8px">Gilt für alle Positionen, in denen kein eigener Aufschlag eingetragen ist. Ein Wert in der Position überschreibt ihn (auch 0).</div></div></div>
+<div style="margin-top:12px;display:flex;gap:12px;align-items:end"><div style="width:150px"><label><b>Aufschlag gesamt (%)</b></label><input id="global-markup" class="num" style="font-weight:700"></div>
+<div style="width:150px"><label><b>Kundenrabatt gesamt (%)</b></label><input id="global-discount" class="num" style="font-weight:700"></div></div>
+<div class="hint">Modus „Aufschlag“: VK = EK + Aufschlag. Modus „Liste“: VK = Listenpreis − Kundenrabatt. Ein Wert in der Position überschreibt den globalen (auch 0).</div></div>
 </div>
 
 <div class="card items" style="padding:12px 12px 6px"><h2 style="padding:0 6px">Positionen</h2>
-<table><thead><tr><th style="width:28px">#</th><th>Artikel / Bezeichnung</th><th style="width:78px">Menge</th><th style="width:58px">ME</th><th style="width:96px">EK-Preis</th>
-<th style="width:108px">Preis je</th><th style="width:82px">Aufschlag %</th><th class="right" style="width:120px">VK-Einzelpreis</th><th class="right" style="width:104px">VK-Summe</th><th style="width:30px"></th></tr></thead>
-<tbody id="rows"></tbody></table>
-<div style="padding:8px 6px"><button id="add" type="button">+ Position</button></div>
+<div style="padding:0 6px 10px;position:relative"><input id="art-search" placeholder="Artikel aus dem Artikelstamm hinzufügen – Nummer oder Text eingeben …" autocomplete="off">
+<div id="art-results" class="card" style="display:none;position:absolute;left:6px;right:6px;z-index:5;padding:4px;max-height:320px;overflow:auto"></div></div>
+<div style="overflow-x:auto"><table style="min-width:1280px"><thead><tr><th style="width:28px">#</th><th style="min-width:260px">Artikel / Bezeichnung</th><th style="width:74px">Menge</th><th style="width:54px">ME</th><th style="width:90px">EK-Preis</th><th style="width:90px">Listenpreis</th>
+<th style="width:104px">Preis je</th><th style="width:112px">Modus</th><th style="width:84px">Aufschl. / Rabatt %</th><th class="right" style="width:112px">VK-Einzelpreis</th><th class="right" style="width:100px">VK-Summe</th><th style="width:26px"></th></tr></thead>
+<tbody id="rows"></tbody></table></div>
+<div style="padding:8px 6px"><button id="add" type="button">+ Leere Position</button></div>
 <div class="totals" id="totals"></div></div>
 
 <div class="bar"><span class="mute" id="status"></span>

@@ -4,5 +4,6 @@
 <body><header class="top"><b>Rechnungstool</b>
 <a href="{{ url_for('index') }}" class="{{ 'on' if request.endpoint in ('index','invoice') }}">Rechnungen</a>
 <a href="{{ url_for('customers') }}" class="{{ 'on' if request.endpoint=='customers' }}">Kunden</a>
-<a href="{{ url_for('settings') }}" class="{{ 'on' if request.endpoint=='settings' }}">Einstellungen</a></header>
+<a href="{{ url_for('articles') }}" class="{{ 'on' if request.endpoint=='articles' }}">Artikel</a>
+<a href="{{ url_for('settings') }}" class="{{ 'on' if request.endpoint=='settings' }}">Einstellungen</a><span style="margin-left:auto;font-size:12px;color:var(--mute)">v{{ version }}</span></header>
 <main>{% block main %}{% endblock %}</main></body></html>

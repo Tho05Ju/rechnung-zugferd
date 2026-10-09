@@ -38,14 +38,20 @@ $$('[data-m]').forEach(i => { i.value = S.meta[i.dataset.m] ?? ''; i.oninput = (
 fillCustomer();
 
 // ---- Positionen
+S.global_discount = S.global_discount ?? '0';
 const gm = $('#global-markup'); gm.value = S.global_markup; gm.oninput = () => { S.global_markup = gm.value; recalc(); };
+const gd = $('#global-discount'); gd.value = S.global_discount; gd.oninput = () => { S.global_discount = gd.value; recalc(); };
+const isList = it => it.mode === 'list';
+const pctKey = it => isList(it) ? 'discount' : 'markup';
 function rowHtml(i) {
   return `<tr data-i="${i}"><td class="mute" style="padding-top:12px">${i + 1}</td>
   <td><input data-f="article" placeholder="Art.-Nr." style="margin-bottom:4px;font-size:12px"><textarea data-f="description" rows="2" placeholder="Bezeichnung"></textarea></td>
   <td><input data-f="qty" class="num" inputmode="decimal"></td><td><input data-f="unit"></td>
   <td><input data-f="price" class="num" inputmode="decimal"></td>
+  <td><input data-f="list_price" class="num" inputmode="decimal"></td>
   <td><select data-f="price_unit">${PRICE_UNITS.map(u => `<option value="${u}">je ${u.toLocaleString('de-DE')}</option>`).join('')}</select></td>
-  <td><input data-f="markup" class="num" inputmode="decimal"></td>
+  <td><select data-f="mode"><option value="markup">Aufschlag</option><option value="list">Liste</option></select></td>
+  <td><input data-pct class="num" inputmode="decimal"></td>
   <td class="c" data-o="unit"></td><td class="c" data-o="total"></td>
   <td><button type="button" class="link err" title="Position entfernen" data-del>✕</button></td></tr>`;
 }
@@ -53,23 +59,33 @@ function renderRows() {
   $('#rows').innerHTML = S.items.map((_, i) => rowHtml(i)).join('');
   $$('#rows tr').forEach(tr => {
     const it = S.items[+tr.dataset.i];
+    if (!it.mode) it.mode = 'markup';
     $$('[data-f]', tr).forEach(el => {
       el.value = it[el.dataset.f] ?? '';
-      el.oninput = () => { it[el.dataset.f] = el.value; recalc(); };
+      el.oninput = () => { it[el.dataset.f] = el.value; if (el.dataset.f === 'mode') syncPct(tr, it); recalc(); };
     });
+    const pct = $('[data-pct]', tr);
+    pct.oninput = () => { it[pctKey(it)] = pct.value; recalc(); };
+    syncPct(tr, it);
     $('[data-del]', tr).onclick = () => { S.items.splice(+tr.dataset.i, 1); renderRows(); };
   });
   recalc();
 }
+function syncPct(tr, it) {
+  $('[data-pct]', tr).value = it[pctKey(it)] ?? '';
+  $('[data-f=list_price]', tr).disabled = !isList(it);
+  $('[data-f=price]', tr).style.opacity = isList(it) ? .6 : 1;
+}
 function calc() {
   let net = 0, cost = 0;
   const lines = S.items.map(it => {
-    const m = own(it) ? num(it.markup) : num(S.global_markup);
+    const key = pctKey(it), ownv = own({ markup: it[key] });
+    const p = ownv ? num(it[key]) : num(isList(it) ? S.global_discount : S.global_markup);
     const basis = num(it.price_unit) || 1;
-    const unit = r2(num(it.price) * (1 + m / 100));
+    const unit = isList(it) ? r2(num(it.list_price) * (1 - p / 100)) : r2(num(it.price) * (1 + p / 100));
     const total = r2(num(it.qty) * unit / basis);
-    net += total; cost += r2(num(it.qty) * num(it.price) / basis);
-    return { unit, total, basis };
+    net += total; cost += num(it.price) > 0 ? r2(num(it.qty) * num(it.price) / basis) : total;
+    return { unit, total, basis, ownv };
   });
   net = r2(net); const tax = r2(net * RATE / 100);
   return { lines, net, cost: r2(cost), tax, gross: net + tax };
@@ -80,22 +96,40 @@ function recalc() {
     const i = +tr.dataset.i, it = S.items[i], l = c.lines[i];
     $('[data-o=unit]', tr).innerHTML = `${eur(l.unit)} €<div class="mute" style="font-size:11px">je ${l.basis.toLocaleString('de-DE')} ${it.unit || ''}</div>`;
     $('[data-o=total]', tr).textContent = eur(l.total) + ' €';
-    const mk = $('[data-f=markup]', tr); mk.classList.toggle('own', own(it)); mk.placeholder = S.global_markup === '' ? '0' : String(S.global_markup);
+    const pc = $('[data-pct]', tr); pc.classList.toggle('own', l.ownv);
+    const g = isList(it) ? S.global_discount : S.global_markup; pc.placeholder = g === '' ? '0' : String(g);
     tr.classList.toggle('mm', !!it.mismatch);
     tr.title = it.mismatch ? 'Menge × Preis passt nicht zum Positionswert der Lieferantenrechnung – Preiseinheit prüfen' : '';
   });
   $('#totals').innerHTML = `<div class="mute"><span>Einkauf netto</span><span>${eur(c.cost)} €</span></div>
-   <div class="mute"><span>Aufschlag gesamt</span><span>${eur(c.net - c.cost)} €</span></div>
+   <div class="mute"><span>Marge gesamt</span><span>${eur(c.net - c.cost)} €</span></div>
    <div><span>Summe netto</span><span>${eur(c.net)} €</span></div>
    <div><span>${RATE ? 'zzgl. USt ' + RATE.toLocaleString('de-DE') + ' %' : 'USt (Kleinunternehmer)'}</span><span>${eur(c.tax)} €</span></div>
    <div class="grand"><span>Gesamtbetrag</span><span>${eur(c.gross)} €</span></div>`;
 }
-$('#add').onclick = () => { S.items.push({ article: '', description: '', qty: '1', unit: 'ST', price: '0', price_unit: '1', markup: '' }); renderRows(); };
+$('#add').onclick = () => { S.items.push({ article: '', description: '', qty: '1', unit: 'ST', price: '0', price_unit: '1', markup: '', mode: 'markup', list_price: '', discount: '' }); renderRows(); };
 renderRows();
+
+// ---- Artikelsuche (Artikelstamm)
+const srch = $('#art-search'), res = $('#art-results'); let timer;
+const german = x => String(x).replace('.', ',');
+srch.oninput = () => { clearTimeout(timer); timer = setTimeout(async () => {
+  const q = srch.value.trim(); if (!q) { res.style.display = 'none'; return; }
+  const arts = await (await fetch('/api/articles/search?q=' + encodeURIComponent(q))).json();
+  res.innerHTML = arts.length ? arts.map((a, k) => `<div data-k="${k}" style="padding:6px 8px;cursor:pointer;border-radius:6px"><b>${a.article_no}</b> ${(a.short1 || '').replace(/</g, '&lt;')} <span class="mute">· ${a.source === 'own' ? 'eigener Artikel' : a.supplier} · ${eur(+a.list_price)} € je ${a.price_unit} ${a.unit}</span></div>`).join('')
+    : '<div class="mute" style="padding:8px">Keine Treffer</div>';
+  res.style.display = 'block';
+  $$('[data-k]', res).forEach(d => { d.onmouseenter = () => d.style.background = 'var(--bg)'; d.onmouseleave = () => d.style.background = '';
+    d.onclick = () => { const a = arts[+d.dataset.k];
+      S.items.push({ article: a.article_no, description: [a.short1, a.short2].filter(Boolean).join('\n'), qty: '1', unit: a.unit || 'ST', price: '0',
+        price_unit: String(a.price_unit || 1), markup: '', mode: 'list', list_price: german(a.list_price), discount: '' });
+      res.style.display = 'none'; srch.value = ''; renderRows(); }; });
+}, 200); };
+document.addEventListener('click', e => { if (!res.contains(e.target) && e.target !== srch) res.style.display = 'none'; });
 
 // ---- Speichern / Erzeugen
 function payload() {
-  return { meta: S.meta, customer: cust, items: S.items, global_markup: S.global_markup,
+  return { meta: S.meta, customer: cust, items: S.items, global_markup: S.global_markup, global_discount: S.global_discount,
     save_customer: $('#save-customer').checked, as_new: $('#as-new').checked };
 }
 async function post(path, btn) {

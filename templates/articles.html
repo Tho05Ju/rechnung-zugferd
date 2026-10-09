@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block main %}
+<h1>Artikelstamm</h1>
+{% if report %}<div class="banner">{{ report }}</div>{% endif %}
+<div class="grid g2">
+<div class="card"><h2>Datanorm importieren</h2>
+<form method="post" action="{{ url_for('articles_import') }}" enctype="multipart/form-data" class="grid">
+<div><label>Lieferant / Hersteller *</label><input name="supplier" placeholder="z. B. EFG Gienger Franken"></div>
+<div><label>Datanorm-Dateien (DATANORM.001, .002, …, .WRG)</label><input type="file" name="files" multiple></div>
+<div><button class="primary">Importieren</button></div></form>
+<div class="hint">Datanorm 4 (semikolongetrennt). Ein erneuter Import desselben Lieferanten aktualisiert dessen Preise; eigene Artikel bleiben unberührt.</div>
+{% if suppliers %}<div class="hint" style="margin-top:10px">{% for s in suppliers %}{{ 'Eigene Artikel' if s.source=='own' else s.supplier }}: {{ s.n }}{{ ' · ' if not loop.last }}{% endfor %}</div>{% endif %}</div>
+<div class="card"><h2>Eigenen Artikel anlegen</h2>
+<form method="post" action="{{ url_for('article_save') }}" class="grid g2">
+<div><label>Artikelnummer *</label><input name="article_no" required></div><div><label>Mengeneinheit</label><input name="unit" value="ST"></div>
+<div style="grid-column:1/-1"><label>Bezeichnung</label><input name="short1"></div>
+<div style="grid-column:1/-1"><label>Zusatztext</label><input name="short2"></div>
+<div><label>Listenpreis (netto)</label><input name="list_price" inputmode="decimal" value="0"></div>
+<div><label>Preis je</label><select name="price_unit"><option value="1">1</option><option value="10">10</option><option value="100">100</option><option value="1000">1.000</option></select></div>
+<div><button class="primary">Speichern</button></div></form></div></div>
+
+<form method="get" style="margin-bottom:12px"><input name="q" value="{{ q }}" placeholder="Suchen: Artikelnummer oder Text …"></form>
+<div class="card" style="padding:0"><table>
+<tr><th>Artikelnr.</th><th>Bezeichnung</th><th>Quelle</th><th class="right">Listenpreis</th><th>je</th><th></th></tr>
+{% for a in rows %}<tr><td>{{ a.article_no }}</td><td>{{ a.short1 }}<div class="mute" style="font-size:12px">{{ a.short2 or '' }}</div></td>
+<td class="mute">{{ 'eigen' if a.source=='own' else a.supplier }}</td><td class="right">{{ a.list_price|money }} €</td><td>{{ a.price_unit }} {{ a.unit }}</td>
+<td class="right">{% if a.source=='own' %}<form method="post" action="{{ url_for('article_delete', aid=a.id) }}" onsubmit="return confirm('Artikel löschen?')"><button class="link err">löschen</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="6" class="mute" style="padding:18px">Keine Artikel.</td></tr>{% endfor %}</table></div>
+{% if pages > 1 %}<p class="mute">{{ total }} Treffer · Seite {{ page }} / {{ pages }} ·
+{% if page > 1 %}<a href="?q={{ q }}&page={{ page-1 }}">zurück</a>{% endif %} {% if page < pages %}<a href="?q={{ q }}&page={{ page+1 }}">weiter</a>{% endif %}</p>{% endif %}
+{% endblock %}

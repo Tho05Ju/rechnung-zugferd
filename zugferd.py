@@ -346,11 +346,23 @@ def build_pdf(inv, seller, lines, totals):
     return buf.getvalue()
 
 
+def _srgb_profile():
+    """sRGB-ICC-Profil plattformunabhängig (littlecms über Pillow), sonst Systemprofil."""
+    try:
+        from PIL import ImageCms
+        return ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    except Exception:
+        for p in ("/System/Library/ColorSync/Profiles/sRGB Profile.icc", "/usr/share/color/icc/colord/sRGB.icc",
+                  "C:/Windows/System32/spool/drivers/color/sRGB Color Space Profile.icm"):
+            if os.path.exists(p):
+                return open(p, "rb").read()
+    return None
+
+
 def _pdfa_prepare(pdf_bytes):
     """sRGB-OutputIntent ergänzen (Voraussetzung für PDF/A-3)."""
-    icc_path = next((p for p in ("/System/Library/ColorSync/Profiles/sRGB Profile.icc",
-                                 "/usr/share/color/icc/colord/sRGB.icc") if os.path.exists(p)), None)
-    if not icc_path:
+    icc_bytes = _srgb_profile()
+    if not icc_bytes:
         return pdf_bytes
     pdf = pikepdf.open(io.BytesIO(pdf_bytes))
     for page in pdf.pages:  # reportlab legt Helvetica (nicht eingebettet) an und setzt sie in einem leeren Textblock
@@ -368,7 +380,7 @@ def _pdfa_prepare(pdf_bytes):
                 raise RuntimeError("Helvetica wird im PDF tatsächlich verwendet – nicht PDF/A-konform")
             del fonts[k]
         page.Contents.write(content)
-    icc = pdf.make_stream(open(icc_path, "rb").read())
+    icc = pdf.make_stream(icc_bytes)
     icc["/N"] = 3
     oi = pdf.make_indirect(pikepdf.Dictionary(
         Type=pikepdf.Name.OutputIntent, S=pikepdf.Name.GTS_PDFA1,
