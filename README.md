@@ -15,7 +15,7 @@ Beim ersten Start wird automatisch eine virtuelle Umgebung angelegt und installi
 Zuerst unter **Einstellungen** Absenderdaten, Steuernummer/USt-IdNr., IBAN und optional ein Logo hinterlegen.
 
 ## Funktionen
-- Einlesen von Lieferantenrechnungen (derzeit Layout EFG Gienger Franken), Preiseinheiten (je 100/1000 …) werden erkannt.
+- Einlesen von Lieferantenrechnungen, Preiseinheiten (je 100/1000 …) werden erkannt.
 - Kalkulation je Position: **Aufschlag auf EK** oder **Listenpreis − Kundenrabatt**; Positionswert überschreibt den globalen Wert.
 - Artikelstamm: Datanorm-4-Import (`.001/.002/…`) und eigene Artikel; Artikelsuche im Editor; Treffer beim Upload werden automatisch auf „Liste“ gestellt.
 - Kundendatenbank (Lieferadresse als Standard, editierbar), § 13b-Rechnungen, DATEV-Export, ZUGFeRD-Import von Lieferantenrechnungen.
