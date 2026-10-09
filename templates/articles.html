@@ -4,7 +4,7 @@
 <div class="grid g2">
 <div class="card"><h2>Datanorm importieren</h2>
 <form method="post" action="{{ url_for('articles_import') }}" enctype="multipart/form-data" class="grid">
-<div><label>Lieferant / Hersteller *</label><input name="supplier" placeholder="z. B. EFG Gienger Franken"></div>
+<div><label>Lieferant / Hersteller *</label><input name="supplier" placeholder="z. B. Name des Großhändlers"></div>
 <div><label>Datanorm-Dateien (DATANORM.001, .002, …, .WRG)</label><input type="file" name="files" multiple></div>
 <div><button class="primary">Importieren</button></div></form>
 <div class="hint">Datanorm 4 (semikolongetrennt). Ein erneuter Import desselben Lieferanten aktualisiert dessen Preise; eigene Artikel bleiben unberührt.</div>

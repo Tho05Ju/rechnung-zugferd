@@ -64,7 +64,7 @@ function rowHtml(i) {
   <td><input data-f="price" class="num" inputmode="decimal"></td>
   <td><input data-f="list_price" class="num" inputmode="decimal"></td>
   <td><select data-f="price_unit">${unitsFor(S.items[i]).map(u => `<option value="${u}">je ${u.toLocaleString('de-DE')}</option>`).join('')}</select></td>
-  <td><select data-f="mode"><option value="markup">Aufschlag</option><option value="list">Liste</option></select></td>
+  <td><select data-f="mode"><option value="markup">Aufschl.</option><option value="list">Liste</option></select></td>
   <td><input data-pct class="num" inputmode="decimal"></td>
   <td class="c" data-o="unit"></td><td class="c" data-o="total"></td>
   <td><button type="button" class="link err" title="Position entfernen" data-del>✕</button></td></tr>`;

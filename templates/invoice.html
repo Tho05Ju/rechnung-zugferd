@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% block title %}Rechnung {{ data.meta.number }}{% endblock %}{% block main %}
+<style>main{max-width:min(1800px,98vw)}</style>
 <h1>Endkundenrechnung <span class="pill {{ inv.status }}">{{ 'fertig' if inv.status=='final' else 'Entwurf' }}</span></h1>
 <div class="mute" style="margin:-8px 0 16px">{% if inv.source_pdf %}Aus Lieferantenrechnung {{ data.supplier.name or '' }} Nr. {{ data.supplier.invoice_no or '?' }} vom {{ data.supplier.date or '?' }} ·
 <a href="{{ url_for('source', iid=inv.id) }}" target="_blank">Original ansehen</a>{% else %}Eigene Rechnung ohne Lieferantenrechnung. Trage bei „EK-Preis“ deinen Verkaufspreis ein, der Aufschlag steht auf 0 %.{% endif %}
@@ -40,8 +41,8 @@
 <div class="card items" style="padding:12px 12px 6px"><h2 style="padding:0 6px">Positionen</h2>
 <div style="padding:0 6px 10px;position:relative"><input id="art-search" placeholder="Artikel aus dem Artikelstamm hinzufügen – Nummer oder Text eingeben …" autocomplete="off">
 <div id="art-results" class="card" style="display:none;position:absolute;left:6px;right:6px;z-index:5;padding:4px;max-height:320px;overflow:auto"></div></div>
-<div style="overflow-x:auto"><table style="min-width:1280px"><thead><tr><th style="width:28px">#</th><th style="min-width:260px">Artikel / Bezeichnung</th><th style="width:74px">Menge</th><th style="width:54px">ME</th><th style="width:90px">EK-Preis</th><th style="width:90px">Listenpreis</th>
-<th style="width:104px">Preis je</th><th style="width:112px">Modus</th><th style="width:84px">Aufschl. / Rabatt %</th><th class="right" style="width:112px">VK-Einzelpreis</th><th class="right" style="width:100px">VK-Summe</th><th style="width:26px"></th></tr></thead>
+<div style="overflow-x:auto"><table style="table-layout:fixed;min-width:860px"><thead><tr><th style="width:26px">#</th><th>Artikel / Bezeichnung</th><th style="width:62px">Menge</th><th style="width:50px">ME</th><th style="width:78px">EK-Preis</th><th style="width:80px">Listenpreis</th>
+<th style="width:88px">Preis je</th><th style="width:108px">Modus</th><th style="width:70px">% Aufschl./Rabatt</th><th class="right" style="width:104px">VK-Einzelpreis</th><th class="right" style="width:92px">VK-Summe</th><th style="width:26px"></th></tr></thead>
 <tbody id="rows"></tbody></table></div>
 <div style="padding:8px 6px"><button id="add" type="button">+ Leere Position</button></div>
 <div class="totals" id="totals"></div></div>
